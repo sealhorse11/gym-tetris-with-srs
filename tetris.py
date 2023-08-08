@@ -136,10 +136,6 @@ class Tetris:
         random.shuffle(basic_bag)
         return basic_bag
 
-    def game_over(self):
-        # TODO: judge that the game is over
-        pass
-
     def hard_drop_pos(self) -> (int, int):
         expected_dropped_pos = self.curr_pos
         diff_blocks_pos = self.TETROMINOS[self.curr_tetromino][self.curr_rotation]
@@ -208,8 +204,10 @@ class Tetris:
             self.curr_pos = self.move_right_pos()
         return
 
-    def line_clear(self, other):
-        # TODO: think my gauge....
+    def line_clear(self, other) -> bool:
+        """
+        return if line is cleared
+        """
 
         target_lines = []
 
@@ -217,12 +215,16 @@ class Tetris:
             if 0 not in line:
                 target_lines.append(line_num)
 
-        if len(target_lines) == 0:
+        if not target_lines:
             self.back_to_back = False
             self.combo = 0
-            return
+            return False
 
         total_damage = []
+
+        if self.combo > 0:
+            total_damage.append(("combo", self.COMBO_DAMAGE[self.combo]))
+        self.combo = self.combo + 1
 
         if len(target_lines) == 4:
             total_damage.append(("tetris", 4))
@@ -250,10 +252,6 @@ class Tetris:
                 total_damage.append(("lines", len(target_lines) - 1))
                 self.back_to_back = False
 
-        if self.combo > 0:
-            total_damage.append(("combo", self.COMBO_DAMAGE[self.combo]))
-        self.combo = self.combo + 1
-
         self.t_spinned = False
         self.mini_t_spinned = False
 
@@ -261,8 +259,6 @@ class Tetris:
             for line_num in range(target_line, 0, -1):
                 self.board[line_num] = self.board[line_num - 1]
             self.board[0] = np.zeros(self.BOARD_WIDTH, dtype=int)
-
-        # TODO: all clear
 
         is_all_clear = True
         for line in self.board:
@@ -273,19 +269,38 @@ class Tetris:
         if is_all_clear:
             if total_damage[-1][0] == "lines":
                 del total_damage[-1]
-            total_damage.append("all clear", 10)
+            total_damage.append("perfect-clear", 10)
 
-        return
+        # if user's gauge is not empty, clear gauge and send
+
+        while self.gauge and total_damage:
+            if self.gauge[0][1] < total_damage[0][1]:
+                total_damage[0] = (total_damage[0][0], total_damage[0][1] - self.gauge[0][1])
+                del self.gauge[0]
+            elif self.gauge[0][1] > total_damage[0][1]:
+                self.gauge[0] = (self.gauge[0][0], self.gauge[0][1] - total_damage[0][1])
+                del total_damage[0]
+            else:
+                del self.gauge[0]
+                del total_damage[0]
+
+        if total_damage:
+            other.gauge = other.gauge + total_damage
+
+        return True
 
     def create_garbage_lines(self):
-        # TODO: make garbage based on gauge ( gauge: list )
         for garbage in self.gauge:
-            # TODO: create garbage lines for each enemy's attack
-            self.board[0] = [
-                0,
-                1,
-            ]
-            pass
+            hole = random.randint(0, 9)
+            garbage_line = [8 for _ in range(10)]
+            garbage_line[hole] = 0
+            lines = garbage[1]
+
+            garbage_lines = np.repeat(np.array(garbage_line), lines, 0)
+
+            self.board[: self.BOARD_HEIGHT - lines] = self.board[lines:]
+            self.board[self.BOARD_HEIGHT - lines :] = garbage_lines
+
         return
 
     def hold(self):
@@ -306,4 +321,25 @@ class Tetris:
         del self.next_bag[0]
         if len(self.next_bag) <= 5:
             self.next_bag = self.next_bag + self.make_bag()
+
+        self.curr_rotation = 0
+        self.curr_pos = (0, self.START_POINT[1])
+
+        diff_blocks_pos = self.TETROMINOS[self.curr_tetromino][self.curr_rotation]
+        is_move_down_available = True
+
+        while is_move_down_available:
+            next_pos = self.curr_pos + (1, 0)
+            for diff_pos in diff_blocks_pos:
+                x, y = next_pos + diff_pos
+                if y < 0 or y >= self.BOARD_WIDTH or x >= self.VISIBLE_BOARD_HEIGHT or self.board[x][y] != 0:
+                    is_move_down_available = False
+                    break
+
+            if is_move_down_available:
+                self.curr_pos = next_pos
+
+        if self.curr_pos[0] < self.VISIBLE_BOARD_HEIGHT - 1:
+            self.is_game_over = True
+
         return
