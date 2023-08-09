@@ -94,12 +94,33 @@ class Tetris:
     back_to_back = False
     gauge = []
 
+    WALL_KICK_TEST_JLTSZ = [
+        [(0, 0), (-1, 0), (-1, 1), (0, -2), (-1, -2)],
+        [(0, 0), (1, 0), (1, -1), (0, 2), (1, 2)],
+        [(0, 0), (1, 0), (1, 1), (0, -2), (1, -2)],
+        [(0, 0), (-1, 0), (-1, -1), (0, 2), (-1, 2)],
+    ]
+
+    WALL_KICK_EXCEPTION = [
+        {"rotation": 0, "clockwise": 1, "test": 4},
+        {"rotation": 1, "clockwise": 0, "test": 3},
+        {"rotation": 2, "clockwise": 1, "test": 3},
+        {"rotation": 3, "clockwise": 0, "test": 4},
+    ]
+
+    WALL_KICK_TEST_I = [
+        [(0, 0), (-2, 0), (1, 0), (-2, -1), (1, 2)],
+        [(0, 0), (-1, 0), (2, 0), (-1, 2), (2, -1)],
+        [(0, 0), (2, 0), (-1, 0), (2, 1), (-1, -2)],
+        [(0, 0), (1, 0), (-2, 0), (1, -2), (-2, 1)],
+    ]
+
     t_spinned = False
     mini_t_spinned = False
 
     curr_tetromino = 0
     curr_pos = START_POINT
-    curr_rotation = 0
+    curr_rotation_state = 0
 
     def __init__(self):
         self.board = np.array()
@@ -126,7 +147,7 @@ class Tetris:
 
         self.curr_tetromino = 0
         self.curr_pos = self.START_POINT
-        self.curr_rotation = 0
+        self.curr_rotation_state = 0
 
         self.t_spinned = False
         self.mini_t_spinned = False
@@ -138,14 +159,19 @@ class Tetris:
 
     def hard_drop_pos(self) -> (int, int):
         expected_dropped_pos = self.curr_pos
-        diff_blocks_pos = self.TETROMINOS[self.curr_tetromino][self.curr_rotation]
+        diff_blocks_pos = self.TETROMINOS[self.curr_tetromino][self.curr_rotation_state]
         is_move_down_available = True
 
         while is_move_down_available:
             next_pos = expected_dropped_pos + (1, 0)
             for diff_pos in diff_blocks_pos:
                 x, y = next_pos + diff_pos
-                if y < 0 or y >= self.BOARD_WIDTH or x >= self.BOARD_HEIGHT or self.board[x][y] != 0:
+                if (
+                    y < 0
+                    or y >= self.BOARD_WIDTH
+                    or x >= self.BOARD_HEIGHT
+                    or self.board[x][y] != 0
+                ):
                     is_move_down_available = False
                     break
 
@@ -156,21 +182,151 @@ class Tetris:
 
     def is_available_move(self, move) -> bool:
         expected_pos = move()
-        diff_blocks_pos = self.TETROMINOS[self.curr_tetromino][self.curr_rotation]
+        diff_blocks_pos = self.TETROMINOS[self.curr_tetromino][self.curr_rotation_state]
         for diff_pos in diff_blocks_pos:
             x, y = expected_pos + diff_pos
-            if y < 0 or y >= self.BOARD_WIDTH or x >= self.BOARD_HEIGHT or self.board[x][y] != 0:
+            if (
+                y < 0
+                or y >= self.BOARD_WIDTH
+                or x >= self.BOARD_HEIGHT
+                or self.board[x][y] != 0
+            ):
                 return False
 
         return True
 
-    def rotate_clockwise(self) -> (int, int):
-        # TODO: using is_available_pos and implement spin
-        pass
+    def is_in_board(self, pos: (int, int)) -> bool:
+        return (
+            pos[0] >= 0
+            and pos[0] < self.BOARD_HEIGHT
+            and pos[1] >= 0
+            and pos[1] < self.BOARD_WIDTH
+        )
 
-    def rotate_counterclockwise(self) -> (int, int):
-        # TODO: using is_available_pos and implement spin
-        pass
+    def rotate_test(self, is_clockwise: bool) -> (bool, (int, int)):
+        rotation_state = self.curr_rotation_state
+        next_rotation_state = (rotation_state + 90) % 360
+        rotation_state_for_test = self.curr_rotation_state // 90
+        if not is_clockwise:
+            # set next rotation state for correct test
+            next_rotation_state = (rotation_state + 270) % 360
+            rotation_state_for_test = next_rotation_state // 90
+
+        base_point = self.curr_pos
+        changed_base_point = base_point
+        is_rotatable = True
+
+        if self.curr_tetromino == 5:  # I tetromino
+            for test_num in range(5):
+                if is_clockwise:
+                    changed_base_point = (
+                        base_point
+                        + self.WALL_KICK_TEST_I[rotation_state_for_test][test_num]
+                    )
+                else:
+                    changed_base_point = base_point + (
+                        -self.WALL_KICK_TEST_I[rotation_state_for_test][test_num]
+                    )
+                for block_pos_diff in self.TETROMINOS[5][next_rotation_state]:
+                    block_pos = base_point + block_pos_diff
+                    if (
+                        not self.is_in_board(block_pos)
+                        or self.board[block_pos[0]][block_pos[1]] != 0
+                    ):
+                        is_rotatable = False
+                        break
+
+                if is_rotatable:
+                    return (is_rotatable, changed_base_point)
+
+                is_rotatable = True
+            return (False, changed_base_point)
+
+        elif self.curr_tetromino == 1:  # T tetromino
+            for test_num in range(5):
+                test_info = {
+                    "rotation": rotation_state_for_test,
+                    "clockwise": int(is_clockwise),
+                    "test": test_num + 1,
+                }
+                if test_info in self.WALL_KICK_EXCEPTION:
+                    continue
+
+                if is_clockwise:
+                    changed_base_point = (
+                        base_point
+                        + self.WALL_KICK_TEST_JLTSZ[rotation_state_for_test][test_num]
+                    )
+                else:
+                    changed_base_point = base_point + (
+                        -self.WALL_KICK_TEST_JLTSZ[rotation_state_for_test][test_num]
+                    )
+                for block_pos_diff in self.TETROMINOS[self.curr_tetromino][
+                    next_rotation_state
+                ]:
+                    block_pos = base_point + block_pos_diff
+                    if (
+                        not self.is_in_board(block_pos)
+                        or self.board[block_pos[0]][block_pos[1]] != 0
+                    ):
+                        is_rotatable = False
+                        break
+
+                if is_rotatable:
+                    return (is_rotatable, changed_base_point)
+
+                is_rotatable = True
+            return (False, changed_base_point)
+        elif self.curr_tetromino != 4:  # SZJL tetromino
+            for test_num in range(5):
+                if is_clockwise:
+                    changed_base_point = (
+                        base_point
+                        + self.WALL_KICK_TEST_JLTSZ[rotation_state_for_test][test_num]
+                    )
+                else:
+                    changed_base_point = base_point + (
+                        -self.WALL_KICK_TEST_JLTSZ[rotation_state_for_test][test_num]
+                    )
+                for block_pos_diff in self.TETROMINOS[self.curr_tetromino][
+                    next_rotation_state
+                ]:
+                    block_pos = base_point + block_pos_diff
+                    if (
+                        not self.is_in_board(block_pos)
+                        or self.board[block_pos[0]][block_pos[1]] != 0
+                    ):
+                        is_rotatable = False
+                        break
+
+                if is_rotatable:
+                    return (is_rotatable, changed_base_point)
+
+                is_rotatable = True
+            return (False, changed_base_point)
+        else:  # O tetromino
+            for block_pos_diff in self.TETROMINOS[4][0]:
+                block_pos = base_point + block_pos_diff
+                if self.board[block_pos[0]][block_pos[1]] != 0:
+                    is_rotatable = False
+                    break
+            return (is_rotatable, base_point)
+
+    def rotate_clockwise(self) -> bool:
+        is_rotatable, new_pos = self.rotate_test(is_clockwise=True)
+        if is_rotatable:
+            self.curr_rotation_state = (self.curr_rotation_state + 90) % 360
+            self.curr_pos = new_pos
+            return True
+        return False
+
+    def rotate_counterclockwise(self) -> bool:
+        is_rotatable, new_pos = self.rotate_test(is_clockwise=False)
+        if is_rotatable:
+            self.curr_rotation_state = (self.curr_rotation_state + 270) % 360
+            self.curr_pos = new_pos
+            return True
+        return False
 
     def move_left_pos(self) -> (int, int):
         x, y = self.curr_pos
@@ -203,6 +359,11 @@ class Tetris:
         if self.is_available_move(self, self.move_right_pos):
             self.curr_pos = self.move_right_pos()
         return
+
+    def is_on_floor(self):
+        if self.is_available_move(self, self.soft_drop_pos):
+            return True
+        return False
 
     def line_clear(self, other) -> bool:
         """
@@ -275,10 +436,16 @@ class Tetris:
 
         while self.gauge and total_damage:
             if self.gauge[0][1] < total_damage[0][1]:
-                total_damage[0] = (total_damage[0][0], total_damage[0][1] - self.gauge[0][1])
+                total_damage[0] = (
+                    total_damage[0][0],
+                    total_damage[0][1] - self.gauge[0][1],
+                )
                 del self.gauge[0]
             elif self.gauge[0][1] > total_damage[0][1]:
-                self.gauge[0] = (self.gauge[0][0], self.gauge[0][1] - total_damage[0][1])
+                self.gauge[0] = (
+                    self.gauge[0][0],
+                    self.gauge[0][1] - total_damage[0][1],
+                )
                 del total_damage[0]
             else:
                 del self.gauge[0]
@@ -322,17 +489,22 @@ class Tetris:
         if len(self.next_bag) <= 5:
             self.next_bag = self.next_bag + self.make_bag()
 
-        self.curr_rotation = 0
+        self.curr_rotation_state = 0
         self.curr_pos = (0, self.START_POINT[1])
 
-        diff_blocks_pos = self.TETROMINOS[self.curr_tetromino][self.curr_rotation]
+        diff_blocks_pos = self.TETROMINOS[self.curr_tetromino][self.curr_rotation_state]
         is_move_down_available = True
 
         while is_move_down_available:
             next_pos = self.curr_pos + (1, 0)
             for diff_pos in diff_blocks_pos:
                 x, y = next_pos + diff_pos
-                if y < 0 or y >= self.BOARD_WIDTH or x >= self.VISIBLE_BOARD_HEIGHT or self.board[x][y] != 0:
+                if (
+                    y < 0
+                    or y >= self.BOARD_WIDTH
+                    or x >= self.VISIBLE_BOARD_HEIGHT
+                    or self.board[x][y] != 0
+                ):
                     is_move_down_available = False
                     break
 
