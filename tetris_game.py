@@ -286,21 +286,21 @@ def solo_mode():
             if event.type == DROP_BLOCK_EVENT:
                 game.soft_drop()
 
-        if left_pressed_time != -1 and pygame.time.get_ticks() - left_pressed_time >= delayed_auto_shift:
-            if last_moved_time == -1:
-                last_moved_time = pygame.time.get_ticks()
-            
-            if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                game.move_left()
-                last_moved_time = pygame.time.get_ticks()
-        
-        if right_pressed_time != -1 and pygame.time.get_ticks() - right_pressed_time >= delayed_auto_shift:
-            if last_moved_time == -1:
-                last_moved_time = pygame.time.get_ticks()
-            
-            if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                game.move_right()
-                last_moved_time = pygame.time.get_ticks()
+        if left_pressed_time != -1 or right_pressed_time != -1:
+            if left_pressed_time != -1 and (pygame.time.get_ticks() - left_pressed_time < pygame.time.get_ticks() - right_pressed_time):
+                if last_moved_time == -1:
+                    last_moved_time = pygame.time.get_ticks()
+                
+                if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
+                    game.move_left()
+                    last_moved_time = pygame.time.get_ticks()
+            elif right_pressed_time != -1 and (pygame.time.get_ticks() - right_pressed_time < pygame.time.get_ticks() - left_pressed_time):
+                if last_moved_time == -1:
+                    last_moved_time = pygame.time.get_ticks()
+                
+                if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
+                    game.move_right()
+                    last_moved_time = pygame.time.get_ticks()
         
         if down_pressed:
             if last_moved_time == -1:
@@ -416,22 +416,22 @@ def multi_mode_debug():
         
 
         # Deal with auto shift
-        if left_pressed_time != -1 and pygame.time.get_ticks() - left_pressed_time >= delayed_auto_shift:
-            if last_moved_time == -1:
-                last_moved_time = pygame.time.get_ticks()
-            
-            if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                game[0].move_left()
-                last_moved_time = pygame.time.get_ticks()
-        
-        if right_pressed_time != -1 and pygame.time.get_ticks() - right_pressed_time >= delayed_auto_shift:
-            if last_moved_time == -1:
-                last_moved_time = pygame.time.get_ticks()
-            
-            if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                game[0].move_right()
-                last_moved_time = pygame.time.get_ticks()
-        
+        if left_pressed_time != -1 or right_pressed_time != -1:
+            if left_pressed_time != -1 and (pygame.time.get_ticks() - left_pressed_time < pygame.time.get_ticks() - right_pressed_time):
+                if last_moved_time == -1:
+                    last_moved_time = pygame.time.get_ticks()
+                
+                if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
+                    game[0].move_left()
+                    last_moved_time = pygame.time.get_ticks()
+            elif right_pressed_time != -1 and (pygame.time.get_ticks() - right_pressed_time < pygame.time.get_ticks() - left_pressed_time):
+                if last_moved_time == -1:
+                    last_moved_time = pygame.time.get_ticks()
+                
+                if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
+                    game[0].move_right()
+                    last_moved_time = pygame.time.get_ticks()
+
         if down_pressed:
             if last_moved_time == -1:
                 last_moved_time = pygame.time.get_ticks()
