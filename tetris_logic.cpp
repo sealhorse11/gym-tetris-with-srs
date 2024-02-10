@@ -174,7 +174,7 @@ void Game::rotate_counterclockwise()
     for(int test = 0; test < 5; test++)
     {
         if(current_piece->piece == 0)
-            if(current_piece->rotation == 1 && test == 3 || current_piece->rotation == 3 && test == 2)
+            if(current_piece->rotation == 2 && test == 3 || current_piece->rotation == 0 && test == 4)
                 continue;
         
         if(current_piece->piece == 4)
