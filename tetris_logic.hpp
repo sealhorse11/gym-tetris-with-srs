@@ -10,6 +10,10 @@ const int COMBO_DAMAGE[] = {
 
 const int NUMBER_OF_NEXT_PIECES = 5;
 
+char ATTACK_TYPES[][22] = {
+    "SINGLE", "DOUBLE", "TRIPLE", "TETRIS", "T-SPIN mini SINGLE", "T-SPIN mini DOUBLE", "T-SPIN SINGLE", "T-SPIN DOUBLE", "T-SPIN TRIPLE", "PERFECT CLEAR", "PERFECT CLEAR TETRIS", ""
+};
+
 struct Point{
     int row;
     int col;
@@ -115,6 +119,16 @@ struct Piece{
     bool safe();
 };
 
+struct Attack{
+    char* type;
+    int lines;
+    int combo;
+    bool back_to_back;
+
+    Attack(): type(ATTACK_TYPES[11]), lines(0), combo(0), back_to_back(0){};
+    Attack(char* _type, int _lines, int _combo, bool _back_to_back): type(_type), lines(_lines), combo(_combo), back_to_back(_back_to_back){};
+};
+
 class Game{
     public:
         Game();
@@ -139,6 +153,9 @@ class Game{
         int get_sum_of_gauge();
         int* get_board();
 
+        Attack* get_last_attack();
+        int get_sent_attack();
+
     private:
         Game *opponent;
         int next_pieces_top_five[5];
@@ -155,6 +172,8 @@ class Game{
         bool back_to_back;
         bool t_spin;
         bool mini_t_spin;
+        Attack last_attack;
+        int sent_attack;
 
         bool recently_held;
         int hold_piece;

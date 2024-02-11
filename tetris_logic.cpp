@@ -46,6 +46,8 @@ Game::Game()
     hold_piece = -1;
 
     current_piece = NULL;
+    last_attack = Attack();
+    sent_attack = 0;
 
     init_board();
     get_next_piece();
@@ -322,7 +324,7 @@ void Game::line_clear()
             }
         }
     }
-    // add here to set delay for line clear animation
+    
     for(int target_line: target_lines)
     {
         for(int i = target_line; i > 0; i--)
@@ -334,6 +336,8 @@ void Game::line_clear()
         }
     }
 
+
+    // judge attack with cleared lines
     if(target_lines.empty())
     {
         if(opponent != NULL)
@@ -341,40 +345,37 @@ void Game::line_clear()
         combo = 0;
         t_spin = false;
         mini_t_spin = false;
+        last_attack = Attack();
         return;
     }
 
-    // judge attack with cleared lines
-    if(opponent != NULL)
+    std::vector<int> attack_lines = attack(target_lines.size());
+
+    while(!gauges.empty() && !attack_lines.empty())
     {
-        std::vector<int> attack_lines = attack(target_lines.size());
+        int next_gauge = gauges.front();
+        gauges.erase(gauges.begin());
 
-        while(!gauges.empty() && !attack_lines.empty())
+        int next_attack = attack_lines.front();
+        attack_lines.erase(attack_lines.begin());
+
+        if(next_gauge > next_attack)
         {
-            int next_gauge = gauges.front();
-            gauges.erase(gauges.begin());
-
-            int next_attack = attack_lines.front();
-            attack_lines.erase(attack_lines.begin());
-
-            if(next_gauge > next_attack)
-            {
-                gauges.insert(gauges.begin(), next_gauge - next_attack);
-            }
-            else if(next_gauge < next_attack)
-            {
-                attack_lines.insert(attack_lines.begin(), next_attack - next_gauge);
-            }
+            gauges.insert(gauges.begin(), next_gauge - next_attack);
         }
-
-        if(gauges.empty())
+        else if(next_gauge < next_attack)
         {
-            opponent->gauges.insert(opponent->gauges.begin(), attack_lines.begin(), attack_lines.end());
+            attack_lines.insert(attack_lines.begin(), next_attack - next_gauge);
         }
-        else if(attack_lines.empty())
-        {
-            create_garbage();
-        }
+    }
+
+    if(gauges.empty() && opponent != NULL)
+    {
+        opponent->gauges.insert(opponent->gauges.begin(), attack_lines.begin(), attack_lines.end());
+    }
+    else if(attack_lines.empty())
+    {
+        create_garbage();
     }
 
     combo++;
@@ -420,6 +421,25 @@ std::vector<int> Game::attack(int lines)
             attack_lines.push_back(tmp);
             remain -= tmp;
         }
+        if(lines==4)
+        {
+            attack_lines.push_back(4);
+            if (back_to_back)
+            {
+                attack_lines.push_back(1);
+                last_attack = Attack(ATTACK_TYPES[10], 15, 0, 1);
+            }
+            else
+            {
+                last_attack = Attack(ATTACK_TYPES[10], 14, 0, 0);
+                back_to_back = true;
+            }
+        }
+        else
+        {
+            last_attack = Attack(ATTACK_TYPES[9], 10, 0, 0);
+            back_to_back = false;
+        }
         return attack_lines;
     }
 
@@ -428,9 +448,11 @@ std::vector<int> Game::attack(int lines)
     {
         if(t_spin)
         {
+            last_attack = Attack(ATTACK_TYPES[6], 2, combo, back_to_back);
             attack_lines.push_back(2);
             if(back_to_back)
             {
+                last_attack.lines++;
                 attack_lines.push_back(1);
             }
             else
@@ -440,8 +462,10 @@ std::vector<int> Game::attack(int lines)
         }
         else if(mini_t_spin)
         {
+            last_attack = Attack(ATTACK_TYPES[4], 0, combo, back_to_back);
             if(back_to_back)
             {
+                last_attack.lines++;
                 attack_lines.push_back(1);
             }
             else
@@ -451,11 +475,13 @@ std::vector<int> Game::attack(int lines)
         }
         else
         {
+            last_attack = Attack(ATTACK_TYPES[0], 0, combo, false);
             back_to_back = false;
         }
         
         if(combo > 1)
         {
+            last_attack.lines += COMBO_DAMAGE[combo];
             attack_lines.push_back(COMBO_DAMAGE[combo]);
         }
     }
@@ -463,9 +489,11 @@ std::vector<int> Game::attack(int lines)
     {
         if(t_spin)
         {
+            last_attack = Attack(ATTACK_TYPES[7], 4, combo, back_to_back);
             attack_lines.push_back(4);
             if(back_to_back)
             {
+                last_attack.lines++;
                 attack_lines.push_back(1);
             }
             else
@@ -475,8 +503,10 @@ std::vector<int> Game::attack(int lines)
         }
         else if(mini_t_spin)
         {
+            last_attack = Attack(ATTACK_TYPES[5], 1, combo, back_to_back);
             if(back_to_back)
             {
+                last_attack.lines++;
                 attack_lines.push_back(1);
             }
             else
@@ -486,12 +516,14 @@ std::vector<int> Game::attack(int lines)
         }
         else
         {
+            last_attack = Attack(ATTACK_TYPES[1], 1, combo, false);
             attack_lines.push_back(1);
             back_to_back = false;
         }
         
         if(combo > 1)
         {
+            last_attack.lines += COMBO_DAMAGE[combo];
             attack_lines.push_back(COMBO_DAMAGE[combo]);
         }
     }
@@ -499,9 +531,11 @@ std::vector<int> Game::attack(int lines)
     {
         if(t_spin)
         {
+            last_attack = Attack(ATTACK_TYPES[8], 6, combo, back_to_back);
             attack_lines.push_back(6);
             if(back_to_back)
             {
+                last_attack.lines++;
                 attack_lines.push_back(1);
             }
             else
@@ -511,20 +545,24 @@ std::vector<int> Game::attack(int lines)
         }
         else
         {
+            last_attack = Attack(ATTACK_TYPES[2], 2, combo, false);
             attack_lines.push_back(2);
             back_to_back = false;
         }
         
         if(combo > 1)
         {
+            last_attack.lines += COMBO_DAMAGE[combo];
             attack_lines.push_back(COMBO_DAMAGE[combo]);
         }
     }
     else if(lines == 4) // Tetris
     {
+        last_attack = Attack(ATTACK_TYPES[3], 4, combo, back_to_back);
         attack_lines.push_back(4);
         if(back_to_back)
         {
+            last_attack.lines++;
             attack_lines.push_back(1);
         }
         else
@@ -533,19 +571,21 @@ std::vector<int> Game::attack(int lines)
         }
         if(combo > 1)
         {
+            last_attack.lines += COMBO_DAMAGE[combo];
             attack_lines.push_back(COMBO_DAMAGE[combo]);
         }
     }
+    sent_attack += last_attack.lines;
     return attack_lines;
 }
 
 void Game::create_garbage()
 {
+    if(gauges.empty() || opponent == NULL)
+        return;
+
     std::default_random_engine gen(std::chrono::system_clock::now().time_since_epoch().count());
     std::uniform_int_distribution<int> dis(0, 9);
-
-    if(gauges.empty())
-        return;
 
     int total_lines = 0;
     for(int line: gauges)
@@ -658,6 +698,9 @@ int* Game::get_board()
     return board_1d;
 }
 
+Attack* Game::get_last_attack(){return &last_attack;};
+int Game::get_sent_attack(){return sent_attack;};
+
 extern "C"
 {
     Game* Game_new(){return new Game();}
@@ -680,6 +723,12 @@ extern "C"
     int* Game_get_next_pieces_top_five(Game* self){return self->get_next_pieces_top_five();}
     int Game_get_sum_of_gauge(Game* self){return self->get_sum_of_gauge();}
     int* Game_get_board(Game* self){return self->get_board();}
+
+    char* Game_get_last_attack_type(Game* self){return self->get_last_attack()->type;}
+    int Game_get_last_attack_lines(Game* self){return self->get_last_attack()->lines;}
+    int Game_get_last_attack_combo(Game* self){return self->get_last_attack()->combo;}
+    bool Game_get_last_attack_back_to_back(Game* self){return self->get_last_attack()->back_to_back;}
+    int Game_get_sent_attack(Game* self){return self->get_sent_attack();}
 
     void Game_delete(Game* self){delete self;}
 }

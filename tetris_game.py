@@ -2,6 +2,7 @@ import pygame
 import ctypes
 import ctypes.util
 import sys
+import re
 
 # lib = ctypes.CDLL('C:/Users/omyjj/OneDrive/2-winter/tetris-pvp-ai/libtetris.so', winmode=ctypes.RTLD_GLOBAL)
 lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
@@ -92,6 +93,18 @@ class GameLogic(object):
         lib.Game_get_board.argtypes = [ctypes.c_void_p]
         lib.Game_get_board.restype = ctypes.POINTER(ctypes.c_int * 200)
 
+        lib.Game_get_last_attack_type.argtypes = [ctypes.c_void_p]
+        lib.Game_get_last_attack_type.restype = ctypes.c_char_p
+        lib.Game_get_last_attack_lines.argtypes = [ctypes.c_void_p]
+        lib.Game_get_last_attack_lines.restype = ctypes.c_int
+        lib.Game_get_last_attack_combo.argtypes = [ctypes.c_void_p]
+        lib.Game_get_last_attack_combo.restype = ctypes.c_int
+        lib.Game_get_last_attack_back_to_back.argtypes = [ctypes.c_void_p]
+        lib.Game_get_last_attack_back_to_back.restype = ctypes.c_bool
+
+        lib.Game_get_sent_attack.argtypes = [ctypes.c_void_p]
+        lib.Game_get_sent_attack.restype = ctypes.c_int
+
         lib.Game_delete.argtypes = [ctypes.c_void_p]
         lib.Game_delete.restype = None
 
@@ -146,12 +159,28 @@ class GameLogic(object):
         darray = darrayptr.contents
         return list(darray)
     
+    def get_last_attack_type(self):
+        last_attack_type = str(lib.Game_get_last_attack_type(self.obj), 'utf-8')
+        return last_attack_type.replace(" ", "\n")
+    
+    def get_last_attack_lines(self):
+        return lib.Game_get_last_attack_lines(self.obj)
+    
+    def get_last_attack_combo(self):
+        return lib.Game_get_last_attack_combo(self.obj)
+    
+    def get_last_attack_back_to_back(self):
+        return lib.Game_get_last_attack_back_to_back(self.obj)
+    
+    def get_sent_attack(self):
+        return lib.Game_get_sent_attack(self.obj)
+    
     def __del__(self):
         lib.Game_delete(self.obj)
 
 
 class Game():
-    def __init__(self, n_agent=2, window_size=(1600, 600), block_size=30, drop_delay=1000, das=200, move_delay=50, fps=60):
+    def __init__(self, n_agent=2, window_size=(1600, 600), block_size=30, drop_delay=1000, das=200, arr=50, fps=60):
         self.n_agent = n_agent
         self.window_size = window_size
         self.block_size = block_size
@@ -159,13 +188,16 @@ class Game():
         self.play_height = block_size * 20
         self.drop_delay = drop_delay
         self.das = das
-        self.move_delay = move_delay
+        self.arr = arr
         self.fps = fps
 
         self.top_left_x = [(window_size[0] // n_agent * i) + (window_size[0] // n_agent - self.play_width) // 2 for i in range(n_agent)]
         self.top_left_y = (window_size[1] - self.play_height) // 2
 
+        pygame.init()
         self.clock = pygame.time.Clock()
+        self.font = pygame.font.SysFont("Consolas", 50)
+        self.mini_font = pygame.font.SysFont("Consolas", 20)
 
         self.DROP_BLOCK_EVENT = [pygame.USEREVENT + i for i in range(1, n_agent + 1)]
 
@@ -195,6 +227,8 @@ class Game():
         self.right_pressed_time = [-1 for _ in range(self.n_agent)]
         self.down_pressed = [False for _ in range(self.n_agent)]
         self.last_moved_time = [-1 for _ in range(self.n_agent)]
+
+        self.start_time = pygame.time.get_ticks()
 
     def control_lock(self, is_on_ground, on_grounded, struggled, on_grounded_time, struggled_time) -> tuple[bool, bool, int, int, bool]:
         if is_on_ground and not on_grounded:
@@ -245,12 +279,46 @@ class Game():
                     if SHAPES[held_piece][i][j] == 1:
                         pygame.draw.rect(window, COLORS[held_piece], (top_left_x + (j - 5) * block_size, top_left_y + (i + 3) * block_size, block_size, block_size))
         
+        # Draw attack
+        last_attack_type = player.get_last_attack_type()
+        if "PERFECT\nCLEAR" in last_attack_type:
+            last_attack_type = str(last_attack_type[len("PERFECT\nCLEAR"):])
+            self.window.blit(self.font.render("PERFECT", True, (200, 200, 0)), (top_left_x + 15 * block_size // 8, top_left_y + 9 * block_size))
+            self.window.blit(self.font.render("CLEAR", True, (200, 200, 0)), (top_left_x + 11 * block_size // 4, top_left_y + 21 * block_size // 2))
+
+        if last_attack_type != "":
+            last_attack_type = last_attack_type.split("\n")
+            for i, word in enumerate(last_attack_type):
+                if word == "T-SPIN":
+                    self.window.blit(self.font.render(word, True, T_COLOR), (top_left_x - 27 * block_size // 4, top_left_y + (9 + 2 * i) * block_size))
+                elif word == "TETRIS":
+                    self.window.blit(self.font.render(word, True, (0, 255, 255)), (top_left_x - 27 * block_size // 4, top_left_y + (9 + 2 * i) * block_size))
+                else:
+                    self.window.blit(self.font.render(word, True, (255, 255, 255)), (top_left_x - 27 * block_size // 4, top_left_y + (9 + 2 * i) * block_size))
+        
+        # Draw back to back
+        back_to_back = player.get_last_attack_back_to_back()
+        if back_to_back:
+
+            self.window.blit(self.mini_font.render("BACK-TO-BACK", True, (200, 200, 200)), (top_left_x - 25 * block_size // 4, top_left_y + 8 * block_size))
+
+        # Draw combo
+        combo = player.get_last_attack_combo()
+        if combo > 0:
+            self.window.blit(self.font.render(str(combo) + "COMBO", True, (255, 255, 255)), (top_left_x - (25 + len(str(combo)) * 2) * block_size // 4, top_left_y + 17 * block_size))
+        
         # Draw gauge
         gauge = player.get_sum_of_gauge()
         if gauge > 0:
             pygame.draw.line(window, (255, 100, 100), (top_left_x + 10 * block_size, top_left_y + 20 * block_size), (top_left_x + 10 * block_size, top_left_y + 20 * block_size - gauge * block_size), 5)
+        
+        # Draw APM
+        apm = (player.get_sent_attack() / (pygame.time.get_ticks() - self.start_time)) * 60000
+        self.window.blit(self.mini_font.render("APM: " + str(round(apm, 3)), True, (255, 255, 255)), (top_left_x + 11 * block_size, top_left_y + 20 * block_size - 2 * block_size))
 
-    def play(self):
+
+
+    def play(self, user=0):
         assert self.n_agent <= 2
         
         while not self.game_over:
@@ -267,70 +335,70 @@ class Game():
                     self.game_over = True
 
                 if event.type == pygame.KEYDOWN:
-                    if self.on_grounded[0]:
-                        self.struggled[0] = True
+                    if self.on_grounded[user]:
+                        self.struggled[user] = True
                     
                     if event.key == pygame.K_LEFT:
-                        self.left_pressed_time[0] = pygame.time.get_ticks()
-                        self.player[0].move_left()
+                        self.left_pressed_time[user] = pygame.time.get_ticks()
+                        self.player[user].move_left()
                     if event.key == pygame.K_RIGHT:
-                        self.right_pressed_time[0] = pygame.time.get_ticks()
-                        self.player[0].move_right()
+                        self.right_pressed_time[user] = pygame.time.get_ticks()
+                        self.player[user].move_right()
                     if event.key == pygame.K_DOWN:
-                        self.down_pressed[0] = True
-                        self.player[0].soft_drop()
+                        self.down_pressed[user] = True
+                        self.player[user].soft_drop()
                     if event.key == pygame.K_SPACE:
-                        self.player[0].hard_drop()
+                        self.player[user].hard_drop()
                     if event.key == pygame.K_UP or event.key == pygame.K_x:
-                        self.player[0].rotate_clockwise()
+                        self.player[user].rotate_clockwise()
                     if event.key == pygame.K_z:
-                        self.player[0].rotate_counterclockwise()
+                        self.player[user].rotate_counterclockwise()
                     if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT or event.key == pygame.K_c:
-                        self.player[0].hold()
-                        self.on_grounded[0] = False
-                        self.struggled[0] = False
+                        self.player[user].hold()
+                        self.on_grounded[user] = False
+                        self.struggled[user] = False
                 
                 if event.type == pygame.KEYUP:
                     if event.key == pygame.K_LEFT:
-                        self.left_pressed_time[0] = -1
-                        self.last_moved_time[0] = -1
+                        self.left_pressed_time[user] = -1
+                        self.last_moved_time[user] = -1
                     if event.key == pygame.K_RIGHT:
-                        self.right_pressed_time[0] = -1
-                        self.last_moved_time[0] = -1
+                        self.right_pressed_time[user] = -1
+                        self.last_moved_time[user] = -1
                     if event.key == pygame.K_DOWN:
-                        self.down_pressed[0] = False
-                        self.last_moved_time[0] = -1
+                        self.down_pressed[user] = False
+                        self.last_moved_time[user] = -1
                 
                 for i in range(self.n_agent):
                     if event.type == self.DROP_BLOCK_EVENT[i]:
                         self.player[i].soft_drop()
 
             # Deal with auto shift
-            if self.left_pressed_time[0] != -1 or self.right_pressed_time[0] != -1:
-                if self.left_pressed_time[0] != -1 and (pygame.time.get_ticks() - self.left_pressed_time[0] < pygame.time.get_ticks() - self.right_pressed_time[0]) \
-                    and pygame.time.get_ticks() - self.left_pressed_time[0] >= self.das:
-                    if self.last_moved_time[0] == -1:
-                        self.last_moved_time[0] = pygame.time.get_ticks()
+            if self.left_pressed_time[user] != -1 or self.right_pressed_time[user] != -1:
+                if self.left_pressed_time[user] != -1 and (pygame.time.get_ticks() - self.left_pressed_time[user] < pygame.time.get_ticks() - self.right_pressed_time[user]) \
+                    and pygame.time.get_ticks() - self.left_pressed_time[user] >= self.das:
+                    if self.last_moved_time[user] == -1:
+                        self.last_moved_time[user] = pygame.time.get_ticks()
                     
-                    if self.last_moved_time[0] != -1 and pygame.time.get_ticks() - self.last_moved_time[0] >= self.move_delay:
-                        self.player[0].move_left()
-                        self.last_moved_time[0] = pygame.time.get_ticks()
-                elif self.right_pressed_time[0] != -1 and (pygame.time.get_ticks() - self.right_pressed_time[0] < pygame.time.get_ticks() - self.left_pressed_time[0]) \
-                    and pygame.time.get_ticks() - self.right_pressed_time[0] >= self.das:
-                    if self.last_moved_time[0] == -1:
-                        self.last_moved_time[0] = pygame.time.get_ticks()
+                    if self.last_moved_time[user] != -1 and pygame.time.get_ticks() - self.last_moved_time[user] >= self.arr:
+                        self.player[user].move_left()
+                        self.last_moved_time[user] = pygame.time.get_ticks()
+                elif self.right_pressed_time[user] != -1 and (pygame.time.get_ticks() - self.right_pressed_time[user] < pygame.time.get_ticks() - self.left_pressed_time[user]) \
+                    and pygame.time.get_ticks() - self.right_pressed_time[user] >= self.das:
+                    if self.last_moved_time[user] == -1:
+                        self.last_moved_time[user] = pygame.time.get_ticks()
                     
-                    if self.last_moved_time[0] != -1 and pygame.time.get_ticks() - self.last_moved_time[0] >= self.move_delay:
-                        self.player[0].move_right()
-                        self.last_moved_time[0] = pygame.time.get_ticks()
+                    if self.last_moved_time[user] != -1 and pygame.time.get_ticks() - self.last_moved_time[user] >= self.arr:
+                        self.player[user].move_right()
+                        self.last_moved_time[user] = pygame.time.get_ticks()
             
-            if self.down_pressed[0]:
-                if self.last_moved_time[0] == -1:
-                    self.last_moved_time[0] = pygame.time.get_ticks()
+            if self.down_pressed[user]:
+                if self.last_moved_time[user] == -1:
+                    self.last_moved_time[user] = pygame.time.get_ticks()
                 
-                if self.last_moved_time[0] != -1 and pygame.time.get_ticks() - self.last_moved_time[0] >= self.move_delay:
-                    self.player[0].soft_drop()
-                    self.last_moved_time[0] = pygame.time.get_ticks()
+                if self.last_moved_time[user] != -1 and pygame.time.get_ticks() - self.last_moved_time[user] >= self.arr:
+                    self.player[user].soft_drop()
+                    self.last_moved_time[user] = pygame.time.get_ticks()
             
             # Deal with lock
             for i in range(self.n_agent):
@@ -349,339 +417,44 @@ class Game():
             # Limit frame rate
             self.clock.tick(self.fps)
 
-    def close(self):
+    def get_obs(self, target_player=0):
+        return {
+            "board": self.player[target_player].get_board(),
+            "held_piece": self.player[target_player].get_held_piece(),
+            "next_pieces": self.player[target_player].get_next_pieces_top_five(),
+            "combo": self.player[target_player].get_last_attack_combo(),
+            "back_to_back": self.player[target_player].get_last_attack_back_to_back(),
+            "gauge": self.player[target_player].get_sum_of_gauge(),
+            "opponent_board": self.player[1 - target_player].get_board()
+        }
+    
+    def step(self, action, player=0):
+        if action == 0:
+            self.player[player].move_left()
+        elif action == 1:
+            self.player[player].move_right()
+        elif action == 2:
+            self.player[player].soft_drop()
+        elif action == 3:
+            self.player[player].hard_drop()
+        elif action == 4:
+            self.player[player].rotate_clockwise()
+        elif action == 5:
+            self.player[player].rotate_counterclockwise()
+        elif action == 6:
+            self.player[player].hold()
+            self.on_grounded[player] = False
+            self.struggled[player] = False
+    
+    def __del__(self):
         pygame.quit()
-
-def control_lock(is_on_ground, on_grounded, struggled, on_grounded_time, struggled_time) -> tuple[bool, bool, int, int, bool]:
-    if is_on_ground and not on_grounded:
-        struggled_time = pygame.time.get_ticks()
-        on_grounded_time = pygame.time.get_ticks()
-        on_grounded = True
-
-    if on_grounded:
-        if struggled or not is_on_ground:
-            on_grounded_time = pygame.time.get_ticks()
-            struggled = False
-        
-        if is_on_ground:
-            if (not struggled and pygame.time.get_ticks() - on_grounded_time >= 1000) or (pygame.time.get_ticks() - struggled_time >= 6000):
-                on_grounded = False
-                return (on_grounded, struggled, on_grounded_time, struggled_time, True)
-    
-    return (on_grounded, struggled, on_grounded_time, struggled_time, False)
-
-
-def draw_window(window, player, top_left_x, top_left_y, block_size):    
-    # Draw grid
-    line_width = 2
-    for i in range(0, 11):
-        pygame.draw.line(window, GRID_COLOR, (top_left_x + i * block_size, top_left_y), (top_left_x + i * block_size, top_left_y + 20 * block_size), line_width)
-    
-    for i in range(0, 21):
-        pygame.draw.line(window, GRID_COLOR, (top_left_x, top_left_y + i * block_size), (top_left_x + 10 * block_size, top_left_y + i * block_size), line_width)
-    
-    # Draw blocks
-    board = player.get_board()
-    for i in range(200):
-        if board[i] != -1:
-            pygame.draw.rect(window, COLORS[board[i]], (top_left_x + (i % 10) * block_size, top_left_y + (i // 10) * block_size, block_size, block_size))
-
-    # Draw next pieces
-    next_pieces = player.get_next_pieces_top_five()
-    for i, target_piece in enumerate(next_pieces):
-        for j in range(len(SHAPES[target_piece])):
-            for k in range(len(SHAPES[target_piece][j])):
-                if SHAPES[target_piece][j][k] == 1:
-                    pygame.draw.rect(window, COLORS[target_piece], (top_left_x + (k + 11) * block_size, top_left_y + (3 * i + j + 1) * block_size, block_size, block_size))
-    
-    # Draw held piece
-    held_piece = player.get_held_piece()
-    if held_piece != -1:
-        for i in range(len(SHAPES[held_piece])):
-            for j in range(len(SHAPES[held_piece][i])):
-                if SHAPES[held_piece][i][j] == 1:
-                    pygame.draw.rect(window, COLORS[held_piece], (top_left_x + (j - 5) * block_size, top_left_y + (i + 3) * block_size, block_size, block_size))
-    
-    # Draw gauge
-    gauge = player.get_sum_of_gauge()
-    if gauge > 0:
-        pygame.draw.line(window, (255, 100, 100), (top_left_x + 10 * block_size, top_left_y + 20 * block_size), (top_left_x + 10 * block_size, top_left_y + 20 * block_size - gauge * block_size), 5)
-
-def solo_mode():
-    window_width = 800
-    window_height = 600
-    block_size = 30
-    play_width = block_size * 10
-    play_height = block_size * 20
-
-    window = pygame.display.set_mode((window_width, window_height), pygame.HWSURFACE | pygame.DOUBLEBUF)
-    pygame.display.set_caption("Tetris")
-
-    top_left_x = (window_width - play_width) // 2
-    top_left_y = (window_height - play_height) // 2
-
-    clock = pygame.time.Clock()
-    player = GameLogic()
-    running = True
-
-    DROP_BLOCK_EVENT = pygame.USEREVENT + 1
-    pygame.time.set_timer(DROP_BLOCK_EVENT, 1000)
-
-    on_grounded = False
-    on_grounded_time = 0
-    struggled_time = 0
-    struggled = False
-
-    delayed_auto_shift = 200
-    move_delay = 50
-    fps = 30
-    left_pressed_time = -1
-    right_pressed_time = -1
-    down_pressed = False
-    last_moved_time = -1
-
-    while running:
-        if(player.is_game_over()):
-            running = False
-            continue
-        strgguled = False
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-            if event.type == pygame.KEYDOWN:
-                if on_grounded:
-                    struggled = True
-                
-                if event.key == pygame.K_LEFT:
-                    left_pressed_time = pygame.time.get_ticks()
-                    player.move_left()
-                if event.key == pygame.K_RIGHT:
-                    right_pressed_time = pygame.time.get_ticks()
-                    player.move_right()
-                if event.key == pygame.K_DOWN:
-                    down_pressed = True
-                    player.soft_drop()
-                if event.key == pygame.K_SPACE:
-                    player.hard_drop()
-                if event.key == pygame.K_UP or event.key == pygame.K_x:
-                    player.rotate_clockwise()
-                if event.key == pygame.K_z:
-                    player.rotate_counterclockwise()
-                if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT or event.key == pygame.K_c:
-                    player.hold()
-                    on_grounded = False
-                    struggled = False
-            
-            if event.type == pygame.KEYUP:
-                if event.key == pygame.K_LEFT:
-                    left_pressed_time = -1
-                    last_moved_time = -1
-                if event.key == pygame.K_RIGHT:
-                    right_pressed_time = -1
-                    last_moved_time = -1
-                if event.key == pygame.K_DOWN:
-                    down_pressed = False
-                    last_moved_time = -1
-            
-            if event.type == DROP_BLOCK_EVENT:
-                player.soft_drop()
-
-        if left_pressed_time != -1 or right_pressed_time != -1:
-            if left_pressed_time != -1 and (pygame.time.get_ticks() - left_pressed_time < pygame.time.get_ticks() - right_pressed_time) \
-                and pygame.time.get_ticks() - left_pressed_time >= delayed_auto_shift:
-                if last_moved_time == -1:
-                    last_moved_time = pygame.time.get_ticks()
-                
-                if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                    player.move_left()
-                    last_moved_time = pygame.time.get_ticks()
-            elif right_pressed_time != -1 and (pygame.time.get_ticks() - right_pressed_time < pygame.time.get_ticks() - left_pressed_time) \
-                and pygame.time.get_ticks() - right_pressed_time >= delayed_auto_shift:
-                if last_moved_time == -1:
-                    last_moved_time = pygame.time.get_ticks()
-                
-                if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                    player.move_right()
-                    last_moved_time = pygame.time.get_ticks()
-        
-        if down_pressed:
-            if last_moved_time == -1:
-                last_moved_time = pygame.time.get_ticks()
-            
-            if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                player.soft_drop()
-                last_moved_time = pygame.time.get_ticks()
-
-        on_grounded, struggled, on_grounded_time, struggled_time, is_to_lock = \
-            control_lock(player.is_on_ground(), on_grounded, struggled, on_grounded_time, struggled_time)
-
-        if is_to_lock:
-            player.lock()
-        
-        # Draw game
-        window.fill(BACKGROUND)
-        draw_window(window, player, top_left_x, top_left_y, block_size)
-        pygame.display.flip()
-        
-        # Limit frame rate
-        clock.tick(fps)
-
-
-def multi_mode_debug():
-    window_width = 1600
-    window_height = 600
-    block_size = 30
-    play_width = block_size * 10
-    play_height = block_size * 20
-
-    window = pygame.display.set_mode((window_width, window_height), pygame.HWSURFACE | pygame.DOUBLEBUF)
-    pygame.display.set_caption("Tetris")
-
-    top_left_x = ((window_width // 2 - play_width) // 2, window_width // 2 + (window_width // 2 - play_width) // 2)
-    top_left_y = (window_height - play_height) // 2
-
-    clock = pygame.time.Clock()
-    player = [GameLogic(), GameLogic()]
-
-    player[0].set_opponent(player[1])
-    player[1].set_opponent(player[0])
-
-    running = True
-
-    DROP_BLOCK_EVENT = (pygame.USEREVENT + 1, pygame.USEREVENT + 2)
-
-    pygame.time.set_timer(DROP_BLOCK_EVENT[0], 1000)
-    pygame.time.set_timer(DROP_BLOCK_EVENT[1], 1000)
-
-    on_grounded = [False, False]
-    on_grounded_time = [0, 0]
-    struggled_time = [0, 0]
-    struggled = [False, False]
-
-    delayed_auto_shift = 200
-    move_delay = 50
-    fps = 60
-    left_pressed_time = -1
-    right_pressed_time = -1
-    down_pressed = False
-    last_moved_time = -1
-
-    while running:
-        # Check game over
-        if player[0].is_game_over() or player[1].is_game_over():
-            running = False
-            continue
-        strgguled = [False, False]
-
-        # Deal with events
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-
-            if event.type == pygame.KEYDOWN:
-                if on_grounded:
-                    struggled[0] = True
-                
-                if event.key == pygame.K_LEFT:
-                    left_pressed_time = pygame.time.get_ticks()
-                    player[0].move_left()
-                if event.key == pygame.K_RIGHT:
-                    right_pressed_time = pygame.time.get_ticks()
-                    player[0].move_right()
-                if event.key == pygame.K_DOWN:
-                    down_pressed = True
-                    player[0].soft_drop()
-                if event.key == pygame.K_SPACE:
-                    player[0].hard_drop()
-                if event.key == pygame.K_UP or event.key == pygame.K_x:
-                    player[0].rotate_clockwise()
-                if event.key == pygame.K_z:
-                    player[0].rotate_counterclockwise()
-                if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT or event.key == pygame.K_c:
-                    player[0].hold()
-                    on_grounded[0] = False
-                    struggled[0] = False
-            
-            if event.type == pygame.KEYUP:
-                if event.key == pygame.K_LEFT:
-                    left_pressed_time = -1
-                    last_moved_time = -1
-                if event.key == pygame.K_RIGHT:
-                    right_pressed_time = -1
-                    last_moved_time = -1
-                if event.key == pygame.K_DOWN:
-                    down_pressed = False
-                    last_moved_time = -1
-            
-            if event.type == DROP_BLOCK_EVENT[0]:
-                player[0].soft_drop()
-            if event.type == DROP_BLOCK_EVENT[1]:
-                player[1].soft_drop()
-        
-        # Deal with auto shift
-        if left_pressed_time != -1 or right_pressed_time != -1:
-            if left_pressed_time != -1 and (pygame.time.get_ticks() - left_pressed_time < pygame.time.get_ticks() - right_pressed_time):
-                if last_moved_time == -1:
-                    last_moved_time = pygame.time.get_ticks()
-                
-                if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                    player[0].move_left()
-                    last_moved_time = pygame.time.get_ticks()
-            elif right_pressed_time != -1 and (pygame.time.get_ticks() - right_pressed_time < pygame.time.get_ticks() - left_pressed_time):
-                if last_moved_time == -1:
-                    last_moved_time = pygame.time.get_ticks()
-                
-                if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                    player[0].move_right()
-                    last_moved_time = pygame.time.get_ticks()
-
-        if down_pressed:
-            if last_moved_time == -1:
-                last_moved_time = pygame.time.get_ticks()
-            
-            if last_moved_time != -1 and pygame.time.get_ticks() - last_moved_time >= move_delay:
-                player[0].soft_drop()
-                last_moved_time = pygame.time.get_ticks()
-
-        # Deal with lock
-        on_grounded[0], struggled[0], on_grounded_time[0], struggled_time[0], is_to_lock = \
-            control_lock(player[0].is_on_ground(), on_grounded[0], struggled[0], on_grounded_time[0], struggled_time[0])
-        
-        if is_to_lock:
-            player[0].lock()
-
-        on_grounded[1], struggled[1], on_grounded_time[1], struggled_time[1], is_to_lock = \
-            control_lock(player[1].is_on_ground(), on_grounded[1], struggled[1], on_grounded_time[1], struggled_time[1])
-        
-        if is_to_lock:
-            player[1].lock()
-        
-
-        # Draw window
-        window.fill(BACKGROUND)
-        draw_window(window, player[0], top_left_x[0], top_left_y, block_size)
-        draw_window(window, player[1], top_left_x[1], top_left_y, block_size)
-        pygame.display.flip()
-        
-
-        # Limit frame rate
-        clock.tick(fps)
 
 
 if __name__ == "__main__":
-    # Initialize game
-    pygame.init()
-
     if len(sys.argv) == 1 or sys.argv[1] == "solo":
-        solo_mode()
-    elif sys.argv[1] == "multi_debug":
-        multi_mode_debug()
-    elif sys.argv[1] == "multi":
-        game = Game(n_agent=1, window_size=(800, 600), block_size=30, drop_delay=1000, das=200, move_delay=50, fps=60)
+        game = Game(n_agent=1, window_size=(800, 600), block_size=30, drop_delay=1000, das=200, arr=50, fps=60)
         game.play()
-    
-    pygame.quit()
-
+    elif sys.argv[1] == "multi":
+        game = Game(n_agent=2, window_size=(1600, 600), block_size=30, drop_delay=1000, das=200, arr=50, fps=60)
+        game.play()
     
