@@ -1,14 +1,8 @@
 import pygame
 import ctypes
-import ctypes.util
 import sys
-import re
 
-# lib = ctypes.CDLL('C:/Users/omyjj/OneDrive/2-winter/tetris-pvp-ai/libtetris.so', winmode=ctypes.RTLD_GLOBAL)
-try:
-    lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
-except OSError:
-    lib = ctypes.CDLL('./libtetris.so')
+lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
 
 # Colors
 BACKGROUND = (0, 0, 0)
@@ -253,8 +247,14 @@ class Game():
                     return (on_grounded, struggled, on_grounded_time, struggled_time, True)
         
         return (on_grounded, struggled, on_grounded_time, struggled_time, False)
+
+    def draw_board(self):
+        self.draw_board(self.window, self.player[0], self.top_left_x[0], self.top_left_y[0], self.block_size)
     
     def draw_board(self, window, player, top_left_x, top_left_y, block_size):    
+        if window is None:
+            window = self.window
+        
         # Draw grid
         line_width = 2
         for i in range(0, 11):
@@ -321,7 +321,6 @@ class Game():
         # Draw APM
         apm = (player.get_sent_attack() / (pygame.time.get_ticks() - self.start_time)) * 60000
         self.window.blit(self.mini_font.render("APM: " + str(round(apm, 3)), True, (255, 255, 255)), (top_left_x + 11 * block_size, top_left_y + 20 * block_size - 2 * block_size))
-
 
 
     def play(self, user=0):
@@ -452,6 +451,12 @@ class Game():
             self.on_grounded[player] = False
             self.struggled[player] = False
     
+    def get_info(self, target_player=0):
+        return {
+            "sent_attack": self.player[target_player].get_sent_attack(),
+            "time": pygame.time.get_ticks() - self.start_time,
+        }
+
     def __del__(self):
         pygame.quit()
 

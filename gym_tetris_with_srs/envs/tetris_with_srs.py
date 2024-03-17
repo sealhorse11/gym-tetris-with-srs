@@ -1,11 +1,12 @@
 import gym
-from gym import spaces
+from gym import error, spaces, utils
+from gym.utils import seeding
 import pygame
 import numpy as np
 import ctypes
 import ctypes.util
-import sys
-from ...tetris_game import *
+
+import gym_tetris_with_srs.envs.tetris_battle.tetris_game as TetrisGame
 
 class TetrisBattleEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"]}
@@ -30,31 +31,53 @@ class TetrisBattleEnv(gym.Env):
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
+        self.game = TetrisGame.Game()
         self.reset()
 
     def _get_obs(self, player=0):
         return self.game.get_obs(player)
+    
+    def _get_info(self):
+        return self.game.player[0].get
         
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        self.game = Game()
+        self.game.start()
 
         observation = self._get_obs()
+        info = self._get_info()
 
         if self.render_mode == "human":
             self._render_frame()
         
-        return observation
+        return observation, info
         
     def step(self, action):
+        sent_attack = self._get_info()["sent_attack"]
+
         self.game.step(action)
 
         observation = self._get_obs()
+        info = self._get_info()
+        reward = info - sent_attack
 
         if self.render_mode == "human":
             self._render_frame()
 
-        return observation, self.game.get_reward(), self.game.done, {}
+        return observation, reward, self.game.game_over, False, info
+    
+    def render(self):
+        if self.render_mode == "rgb_array":
+            return self._render_frame()
 
-            
+    def _render_frame(self):
+        self.game.window.fill(TetrisGame.BACKGROUND)
+        self.game.draw_board()
+        pygame.display.flip()
+    
+    def close(self):
+        if self.game.window is not None:
+            pygame.display.quit()
+            pygame.quit()
+    
