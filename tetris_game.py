@@ -5,7 +5,10 @@ import sys
 import re
 
 # lib = ctypes.CDLL('C:/Users/omyjj/OneDrive/2-winter/tetris-pvp-ai/libtetris.so', winmode=ctypes.RTLD_GLOBAL)
-lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
+try:
+    lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
+except OSError:
+    lib = ctypes.CDLL('./libtetris.so')
 
 # Colors
 BACKGROUND = (0, 0, 0)
@@ -54,7 +57,7 @@ SHAPES = [T_SHAPE, S_SHAPE, Z_SHAPE, O_SHAPE, I_SHAPE, J_SHAPE, L_SHAPE]
 
 # Game class
 class GameLogic(object):
-    def __init__(self):
+    def __init__(self, arr=50, das=100, sdf=50):
         lib.Game_new.argtypes = []
         lib.Game_new.restype = ctypes.c_void_p
         lib.Game_set_opponent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
@@ -109,6 +112,9 @@ class GameLogic(object):
         lib.Game_delete.restype = None
 
         self.obj = lib.Game_new()
+        self.arr = arr
+        self.das = das
+        self.sdf = sdf
     
     def set_opponent(self, opponent):
         lib.Game_set_opponent(self.obj, opponent.obj)
