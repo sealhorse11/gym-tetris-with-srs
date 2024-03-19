@@ -2,7 +2,10 @@ import pygame
 import ctypes
 import sys
 
-lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
+try:
+    lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
+except OSError:
+    lib = ctypes.CDLL('./gym_tetris_with_srs/envs/tetris_battle/libtetris.so', winmode=ctypes.RTLD_GLOBAL)
 
 # Colors
 BACKGROUND = (0, 0, 0)

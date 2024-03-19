@@ -38,7 +38,7 @@ class TetrisBattleEnv(gym.Env):
         return self.game.get_obs(player)
     
     def _get_info(self):
-        return self.game.player[0].get
+        return self.game.player[0].get_info()
         
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
@@ -61,6 +61,9 @@ class TetrisBattleEnv(gym.Env):
         observation = self._get_obs()
         info = self._get_info()
         reward = info - sent_attack
+
+        if self.game.game_over:
+            reward = -999999
 
         if self.render_mode == "human":
             self._render_frame()
