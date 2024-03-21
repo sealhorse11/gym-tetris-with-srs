@@ -1,6 +1,6 @@
-import gym
-from gym import error, spaces, utils
-from gym.utils import seeding
+import gymnasium as gym 
+from gymnasium import error, spaces, utils
+from gymnasium.utils import seeding
 import pygame
 import numpy as np
 import ctypes
@@ -38,7 +38,7 @@ class TetrisBattleEnv(gym.Env):
         return self.game.get_obs(player)
     
     def _get_info(self):
-        return self.game.player[0].get_info()
+        return self.game.get_info()
         
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)

@@ -1,0 +1,6 @@
+Metadata-Version: 2.1
+Name: gym_tetris_with_srs
+Version: 0.0.1
+Requires-Dist: gym
+Requires-Dist: pygame
+Requires-Dist: stable-baselines3
