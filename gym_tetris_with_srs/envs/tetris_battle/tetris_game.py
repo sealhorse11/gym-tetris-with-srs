@@ -1,6 +1,7 @@
 import pygame
 import ctypes
 import sys
+import numpy as np
 
 try:
     lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
@@ -179,7 +180,10 @@ class GameLogic(object):
         return lib.Game_get_sent_attack(self.obj)
     
     def __del__(self):
-        lib.Game_delete(self.obj)
+        try:
+            lib.Game_delete(self.obj)
+        except AttributeError:
+            print("GameLogic object already deleted")
 
 
 class Game():
@@ -251,8 +255,8 @@ class Game():
         
         return (on_grounded, struggled, on_grounded_time, struggled_time, False)
 
-    def draw_board(self):
-        self.draw_board(self.window, self.player[0], self.top_left_x[0], self.top_left_y[0], self.block_size)
+    def draw_board_single(self):
+        self.draw_board(self.window, self.player[0], self.top_left_x[0], self.top_left_y, self.block_size)
     
     def draw_board(self, window, player, top_left_x, top_left_y, block_size):    
         if window is None:
@@ -324,7 +328,6 @@ class Game():
         # Draw APM
         apm = (player.get_sent_attack() / (pygame.time.get_ticks() - self.start_time)) * 60000
         self.window.blit(self.mini_font.render("APM: " + str(round(apm, 3)), True, (255, 255, 255)), (top_left_x + 11 * block_size, top_left_y + 20 * block_size - 2 * block_size))
-
 
     def play(self, user=0):
         assert self.n_agent <= 2
@@ -425,16 +428,58 @@ class Game():
             # Limit frame rate
             self.clock.tick(self.fps)
 
+    def get_game_over(self, target_player=0):
+        return self.player[target_player].is_game_over()
+
     def get_obs(self, target_player=0):
-        return {
-            "board": self.player[target_player].get_board(),
-            "held_piece": self.player[target_player].get_held_piece(),
-            "next_pieces": self.player[target_player].get_next_pieces_top_five(),
-            "combo": self.player[target_player].get_last_attack_combo(),
-            "back_to_back": self.player[target_player].get_last_attack_back_to_back(),
-            "gauge": self.player[target_player].get_sum_of_gauge(),
-            "opponent_board": self.player[1 - target_player].get_board()
-        }
+        # get board for obs
+        board_1d = self.player[target_player].get_board()
+        new_board = np.zeros((20, 20), dtype=np.int8)
+        for i in range(200):
+            new_board[i // 10][i % 10] = 1 if board_1d[i] >= 0 else 0
+        
+        # add held piece and next pieces
+        starting_row_for_drawing_piece = 1
+        starting_col_for_drawing_piece = 10
+
+        held_piece = self.player[target_player].get_held_piece()
+        next_pieces = self.player[target_player].get_next_pieces_top_five()
+
+        if held_piece != -1:
+            for i, line in enumerate(SHAPES[held_piece]):
+                for j, block in enumerate(line):
+                    new_board[starting_row_for_drawing_piece + i][starting_col_for_drawing_piece + j] = block
+        
+        for i, target_piece in enumerate(next_pieces):
+            for j, line in enumerate(SHAPES[target_piece]):
+                for k, block in enumerate(line):
+                    new_board[starting_row_for_drawing_piece + 3 * i + j][starting_col_for_drawing_piece + k] = block
+        
+        # add combo, back to back, gauge
+        combo = self.player[target_player].get_last_attack_combo()
+        back_to_back = self.player[target_player].get_last_attack_back_to_back()
+        gauge = self.player[target_player].get_sum_of_gauge()
+
+        col_for_drawing_combo = starting_col_for_drawing_piece + 6
+        for row in range(0, 20):
+            if 20 - row < combo:
+                new_board[20 - row][col_for_drawing_combo] = 1
+            if back_to_back:
+                new_board[row][col_for_drawing_combo + 1] = 1
+            if 20 - row < gauge:
+                new_board[20 - row][col_for_drawing_combo + 2] = 1
+
+        if self.n_agent > 1:
+            opponent_board_1d = self.player[1 - target_player].get_board()
+            opponent_board = np.zeros((20, 10), dtype=np.int8)
+            for i in range(200):
+                opponent_board[i // 10][i % 10] = 1 if opponent_board_1d[i] >= 0 else 0
+            
+            # concatenate two boards
+            new_board = np.concatenate((new_board, opponent_board), axis=1)
+
+        return new_board
+    
     
     def step(self, action, player=0):
         if action == 0:
@@ -461,7 +506,22 @@ class Game():
         }
 
     def __del__(self):
-        pygame.quit()
+        print("attempt to delete game object")
+        if self.window == None:
+            print("already deleted")
+        else:
+            try:
+                del self.player[0]
+                if self.n_agent == 2:
+                    del self.player[1]
+            except AttributeError:
+                print("player: GameLogic already deleted")
+
+            # del self.player[1]       
+            try:
+                pygame.quit()
+            except AttributeError:
+                print("pygame already quit")
 
 
 if __name__ == "__main__":

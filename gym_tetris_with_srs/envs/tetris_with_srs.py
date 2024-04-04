@@ -11,27 +11,17 @@ import gym_tetris_with_srs.envs.tetris_battle.tetris_game as TetrisGame
 class TetrisBattleEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"]}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode="human"):
         super().__init__()
 
-        self.observation_space = spaces.Dict(
-            {
-                "board": spaces.Box(low=-1, high=8, shape=(20, 10), dtype=np.int8),
-                "held_piece": spaces.Box(low=-1, high=6, shape=(), dtype=np.int8),
-                "next_pieces": spaces.Box(low=0, high=7, shape=(5,), dtype=np.int8),
-                "combo": spaces.Box(low=0, high=100, shape=(), dtype=np.int8),
-                "back_to_back": spaces.Box(low=0, high=1, shape=(), dtype=np.int8),
-                "gauge": spaces.Box(low=0, high=100, shape=(), dtype=np.int8),
-                "opponent_board": spaces.Box(low=-1, high=7, shape=(20, 10), dtype=np.int8),
-            }
-        )
+        self.observation_space = spaces.MultiBinary([20, 20])
 
         self.action_space = spaces.Discrete(7)
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
 
-        self.game = TetrisGame.Game()
+        self.game = TetrisGame.Game(n_agent=1, window_size=(800, 600), block_size=30)
         self.reset()
 
     def _get_obs(self, player=0):
@@ -54,21 +44,24 @@ class TetrisBattleEnv(gym.Env):
         return observation, info
         
     def step(self, action):
-        sent_attack = self._get_info()["sent_attack"]
+        sent_attack_before = self._get_info()["sent_attack"]
 
         self.game.step(action)
 
         observation = self._get_obs()
         info = self._get_info()
-        reward = info - sent_attack
+        sent_attack_after = info["sent_attack"]
+        reward = (sent_attack_after - sent_attack_before) * 100
 
-        if self.game.game_over:
+        is_game_over = self.game.get_game_over()
+
+        if is_game_over:
             reward = -999999
 
         if self.render_mode == "human":
             self._render_frame()
 
-        return observation, reward, self.game.game_over, False, info
+        return observation, reward, is_game_over, False, info
     
     def render(self):
         if self.render_mode == "rgb_array":
@@ -76,7 +69,7 @@ class TetrisBattleEnv(gym.Env):
 
     def _render_frame(self):
         self.game.window.fill(TetrisGame.BACKGROUND)
-        self.game.draw_board()
+        self.game.draw_board_single()
         pygame.display.flip()
     
     def close(self):
