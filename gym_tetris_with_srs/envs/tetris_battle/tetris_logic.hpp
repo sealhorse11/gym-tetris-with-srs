@@ -155,6 +155,8 @@ class Game{
 
         Attack* get_last_attack();
         int get_sent_attack();
+        int get_field_height();
+        int get_piece_count();
 
     private:
         Game *opponent;
@@ -174,6 +176,7 @@ class Game{
         bool mini_t_spin;
         Attack last_attack;
         int sent_attack;
+        int piece_count;
 
         bool recently_held;
         int hold_piece;

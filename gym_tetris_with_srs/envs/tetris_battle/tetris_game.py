@@ -106,6 +106,12 @@ class GameLogic(object):
         lib.Game_get_sent_attack.argtypes = [ctypes.c_void_p]
         lib.Game_get_sent_attack.restype = ctypes.c_int
 
+        lib.Game_get_field_height.argtypes = [ctypes.c_void_p]
+        lib.Game_get_field_height.restype = ctypes.c_int
+
+        lib.Game_get_piece_count.argtypes = [ctypes.c_void_p]
+        lib.Game_get_piece_count.restype = ctypes.c_int
+
         lib.Game_delete.argtypes = [ctypes.c_void_p]
         lib.Game_delete.restype = None
 
@@ -178,6 +184,12 @@ class GameLogic(object):
     
     def get_sent_attack(self):
         return lib.Game_get_sent_attack(self.obj)
+
+    def get_field_height(self):
+        return lib.Game_get_field_height(self.obj)
+
+    def get_piece_count(self):
+        return lib.Game_get_piece_count(self.obj)
     
     def __del__(self):
         try:
@@ -326,7 +338,10 @@ class Game():
             pygame.draw.line(window, (255, 100, 100), (top_left_x + 10 * block_size, top_left_y + 20 * block_size), (top_left_x + 10 * block_size, top_left_y + 20 * block_size - gauge * block_size), 5)
         
         # Draw APM
-        apm = (player.get_sent_attack() / (pygame.time.get_ticks() - self.start_time)) * 60000
+        try:
+            apm = (player.get_sent_attack() / (pygame.time.get_ticks() - self.start_time)) * 60000
+        except ZeroDivisionError:
+            apm = 0
         self.window.blit(self.mini_font.render("APM: " + str(round(apm, 3)), True, (255, 255, 255)), (top_left_x + 11 * block_size, top_left_y + 20 * block_size - 2 * block_size))
 
     def play(self, user=0):
@@ -434,9 +449,9 @@ class Game():
     def get_obs(self, target_player=0):
         # get board for obs
         board_1d = self.player[target_player].get_board()
-        new_board = np.zeros((20, 20), dtype=np.int8)
+        new_board = np.zeros((1, 20, 20), dtype=np.uint8)
         for i in range(200):
-            new_board[i // 10][i % 10] = 1 if board_1d[i] >= 0 else 0
+            new_board[0][i // 10][i % 10] = 1 if board_1d[i] >= 0 else 0
         
         # add held piece and next pieces
         starting_row_for_drawing_piece = 1
@@ -448,12 +463,12 @@ class Game():
         if held_piece != -1:
             for i, line in enumerate(SHAPES[held_piece]):
                 for j, block in enumerate(line):
-                    new_board[starting_row_for_drawing_piece + i][starting_col_for_drawing_piece + j] = block
+                    new_board[0][starting_row_for_drawing_piece + i][starting_col_for_drawing_piece + j] = block
         
         for i, target_piece in enumerate(next_pieces):
             for j, line in enumerate(SHAPES[target_piece]):
                 for k, block in enumerate(line):
-                    new_board[starting_row_for_drawing_piece + 3 * i + j][starting_col_for_drawing_piece + k] = block
+                    new_board[0][starting_row_for_drawing_piece + 3 * i + j][starting_col_for_drawing_piece + k] = block
         
         # add combo, back to back, gauge
         combo = self.player[target_player].get_last_attack_combo()
@@ -463,25 +478,41 @@ class Game():
         col_for_drawing_combo = starting_col_for_drawing_piece + 6
         for row in range(0, 20):
             if 20 - row < combo:
-                new_board[20 - row][col_for_drawing_combo] = 1
+                new_board[0][20 - row][col_for_drawing_combo] = 1
             if back_to_back:
-                new_board[row][col_for_drawing_combo + 1] = 1
+                new_board[0][row][col_for_drawing_combo + 1] = 1
             if 20 - row < gauge:
-                new_board[20 - row][col_for_drawing_combo + 2] = 1
+                new_board[0][20 - row][col_for_drawing_combo + 2] = 1
 
         if self.n_agent > 1:
             opponent_board_1d = self.player[1 - target_player].get_board()
-            opponent_board = np.zeros((20, 10), dtype=np.int8)
+            opponent_board = np.zeros((1, 20, 10), dtype=np.int8)
             for i in range(200):
-                opponent_board[i // 10][i % 10] = 1 if opponent_board_1d[i] >= 0 else 0
+                opponent_board[0][i // 10][i % 10] = 1 if opponent_board_1d[i] >= 0 else 0
             
             # concatenate two boards
-            new_board = np.concatenate((new_board, opponent_board), axis=1)
+            new_board = np.concatenate((new_board, opponent_board), axis=2)
 
         return new_board
     
     
     def step(self, action, player=0):
+        for event in pygame.event.get():
+            if event.type == self.DROP_BLOCK_EVENT[player]:
+                self.player[player].soft_drop()
+        
+        self.on_grounded[player], self.struggled[player], self.on_grounded_time[player], self.struggled_time[player], is_to_lock = \
+            self.control_lock(
+                self.player[player].is_on_ground(), 
+                self.on_grounded[player], 
+                self.struggled[player], 
+                self.on_grounded_time[player], 
+                self.struggled_time[player]
+                )
+        
+        if is_to_lock:
+            self.player[player].lock()
+
         if action == 0:
             self.player[player].move_left()
         elif action == 1:
@@ -503,6 +534,9 @@ class Game():
         return {
             "sent_attack": self.player[target_player].get_sent_attack(),
             "time": pygame.time.get_ticks() - self.start_time,
+            "height": self.player[target_player].get_field_height(),
+            "piece_count": self.player[target_player].get_piece_count(),
+            "next_piece": self.player[target_player].get_next_pieces_top_five()[0],
         }
 
     def __del__(self):

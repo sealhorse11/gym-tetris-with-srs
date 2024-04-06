@@ -304,6 +304,7 @@ void Game::lock()
         game_over = true;
     }
     get_next_piece();
+    piece_count++;
 }
 
 void Game::line_clear()
@@ -700,6 +701,22 @@ int* Game::get_board()
 
 Attack* Game::get_last_attack(){return &last_attack;};
 int Game::get_sent_attack(){return sent_attack;};
+int Game::get_piece_count(){return piece_count;};
+
+int Game::get_field_height()
+{
+    for(int i = 0; i < BOARD_HEIGHT; i++)
+    {
+        for(int j = 0; j < BOARD_WIDTH; j++)
+        {
+            if(board[i][j] != -1)
+            {
+                return BOARD_HEIGHT - 1 - i;
+            }
+        }
+    }
+    return 0;
+}
 
 extern "C"
 {
@@ -729,6 +746,8 @@ extern "C"
     int Game_get_last_attack_combo(Game* self){return self->get_last_attack()->combo;}
     bool Game_get_last_attack_back_to_back(Game* self){return self->get_last_attack()->back_to_back;}
     int Game_get_sent_attack(Game* self){return self->get_sent_attack();}
+    int Game_get_field_height(Game* self){return self->get_field_height();}
+    int Game_get_piece_count(Game* self){return self->get_piece_count();}
 
     void Game_delete(Game* self){delete self;}
 }
