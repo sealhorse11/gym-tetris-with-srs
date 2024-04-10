@@ -30,9 +30,16 @@ bool Piece::safe()
 
 Game::Game()
 {
-    score = 0;
     combo = 0;
-    level = 1;
+    das = 100;
+    arr = 10;
+    sdf = 2;
+    lock_delay = 500;
+    drop_delay = 1000;
+
+    game_start_time = pygame_clock;
+    first_on_ground = last_on_ground = 0;
+    left_pressed_time = right_pressed_time = last_shifted = last_soft_dropped = 0;
 
     game_over = false;
 
@@ -43,11 +50,53 @@ Game::Game()
     mini_t_spin = false;
 
     recently_held = false;
-    hold_piece = -1;
+    held_piece = -1;
 
     current_piece = NULL;
     last_attack = Attack();
     sent_attack = 0;
+
+    board_for_render = new int[VISIBLE_HEIGHT * BOARD_WIDTH];
+
+    // 10 channels for observation
+    // board, current piece, held piece, next 5 pieces, btb, combo
+    obs = new int[10 * VISIBLE_HEIGHT * BOARD_WIDTH];
+
+    init_board();
+    get_next_piece();
+}
+
+Game::Game(int _das, int _arr, int _sdf, int _time, int _lock_delay=500, int _drop_delay=1000)
+:das(_das), arr(_arr), sdf(_sdf), lock_delay(_lock_delay), drop_delay(_drop_delay)
+{
+    combo = 0;
+
+    pygame_clock = _time;
+    game_start_time = pygame_clock;
+    first_on_ground = last_on_ground = 0;
+    left_pressed_time = right_pressed_time = last_shifted = last_soft_dropped = 0;
+    last_dropped = pygame_clock;
+
+    game_over = false;
+
+    opponent = NULL; // set opponent in main.cpp
+
+    back_to_back = false;
+    t_spin = false;
+    mini_t_spin = false;
+
+    recently_held = false;
+    held_piece = -1;
+
+    current_piece = NULL;
+    last_attack = Attack();
+    sent_attack = 0;
+
+    board_for_render = new int[VISIBLE_HEIGHT * BOARD_WIDTH];
+
+    // 10 channels for observation
+    // board, current piece, held piece, next 5 pieces, btb, combo
+    obs = new int[10 * VISIBLE_HEIGHT * BOARD_WIDTH];
 
     init_board();
     get_next_piece();
@@ -80,17 +129,19 @@ int Game::get_next_piece()
     recently_held = false;
     if (next_pieces.size() < 7)
         make_bag();
-    if(current_piece != NULL){
+    if(current_piece != NULL)
         delete current_piece;
-    }
+
     current_piece = new Piece(next_pieces[0], 0, get_spawn_point(next_pieces[0]));
     next_pieces.erase(next_pieces.begin());
 
-    if(current_piece->pos.row == -1){
+    if(current_piece->pos.row == -1)
+    {
         game_over = true;
-        lock();
+        lock(true);
         return -1;
     }
+    last_dropped = pygame_clock;
     return 0;
 }
 
@@ -106,6 +157,7 @@ Point Game::get_spawn_point(int piece)
         return spawn_piece.pos;
     }
 
+    game_over = true;
     return Point(-1, -1);   // Game Over
 }
 
@@ -124,44 +176,95 @@ Point Game::get_shadow_point()
     return shadow_piece.pos;
 }
 
-void Game::move_left()
+bool Game::move_left()
 {
     Piece new_piece = Piece(current_piece->piece, current_piece->rotation, current_piece->pos);
     new_piece.pos.col--;
-    if(is_piece_safe(new_piece)){
+    if(is_piece_safe(new_piece))
+    {
+        if(left_pressed_time == 0)
+            left_pressed_time = pygame_clock;
+        else if(left_pressed_time < right_pressed_time)
+            return false;
+        else if(pygame_clock - left_pressed_time >= das && (last_shifted == 0 || pygame_clock - last_shifted >= arr))
+            last_shifted = pygame_clock;
+        else
+            return false;
+        
         current_piece->pos.col--;
         t_spin = false;
         mini_t_spin = false;
+        return true;
     }
+    return false;
 }
 
-void Game::move_right()
+bool Game::move_right()
 {
     Piece new_piece = Piece(current_piece->piece, current_piece->rotation, current_piece->pos);
     new_piece.pos.col++;
-    if(is_piece_safe(new_piece)){
+    if(is_piece_safe(new_piece))
+    {
+        if(right_pressed_time == 0)
+            right_pressed_time = pygame_clock;
+        else if(right_pressed_time < left_pressed_time)
+            return false;
+        else if(pygame_clock - right_pressed_time >= das && (last_shifted == 0 || pygame_clock - last_shifted >= arr))
+            last_shifted = pygame_clock;
+        else
+            return false;
+        
         current_piece->pos.col++;
         t_spin = false;
         mini_t_spin = false;
+        return true;
     }
+    return false;
 }
 
-void Game::soft_drop()
+bool Game::soft_drop(bool by_gravity = false)
 {
     Piece new_piece = Piece(current_piece->piece, current_piece->rotation, current_piece->pos);
     new_piece.pos.row++;
-    if(is_piece_safe(new_piece)){
+    if(is_piece_safe(new_piece))
+    {
+        if(by_gravity)
+            last_dropped = pygame_clock;
+        else if(last_soft_dropped == 0 || pygame_clock - last_soft_dropped >= sdf)
+            last_soft_dropped = pygame_clock;
+        else
+            return false;
+        
         current_piece->pos.row++;
         t_spin = false;
         mini_t_spin = false;
+        return true;
     }
+    return false;
+}
+
+void Game::off_left()
+{
+    left_pressed_time = 0;
+    last_shifted = 0;
+}
+
+void Game::off_right()
+{
+    right_pressed_time = 0;
+    last_shifted = 0;
+}
+
+void Game::off_soft_drop()
+{
+    last_soft_dropped = 0;
 }
 
 void Game::hard_drop()
 {
     Point shadow_point = get_shadow_point();
     current_piece->pos.row = shadow_point.row;
-    lock();
+    lock(true);
 }
 
 void Game::rotate_counterclockwise()
@@ -274,25 +377,55 @@ void Game::rotate_clockwise()
     }
 }
 
-void Game::hold()
+bool Game::hold()
 {
-    if(!recently_held){
-        if(hold_piece == -1){
-            hold_piece = current_piece->piece;
+    if(!recently_held)
+    {
+        if(held_piece == -1)
+        {
+            held_piece = current_piece->piece;
             get_next_piece();
         }
-        else{
+        else
+        {
             int temp = current_piece->piece;
-            current_piece->piece = hold_piece;
-            hold_piece = temp;
+            current_piece->piece = held_piece;
+            held_piece = temp;
             current_piece->pos = get_spawn_point(current_piece->piece);
         }
         recently_held = true;
+        last_dropped = pygame_clock;
+        return true;
     }
+    return false;
 }
 
-void Game::lock()
+bool Game::lock(bool force_lock = false)
 {
+    if(!force_lock)
+    {
+        if(!is_on_ground())
+        {
+            if(pygame_clock - last_dropped >= drop_delay){
+                soft_drop(true);
+                last_dropped = pygame_clock;
+                std::cout << pygame_clock << std::endl;
+            }
+            return false;
+        }
+        else if(first_on_ground == 0)
+        {
+            first_on_ground = pygame_clock;
+            last_on_ground = first_on_ground;
+        }
+        else
+            last_on_ground = pygame_clock;
+
+        if(pygame_clock - first_on_ground < lock_delay * 5 && pygame_clock - last_on_ground < lock_delay)
+            return false;
+    }
+
+
     std::vector<Point> blocks = current_piece->get_blocks();
     for (int i = 0; i < 4; i++)
     {
@@ -305,6 +438,10 @@ void Game::lock()
     }
     get_next_piece();
     piece_count++;
+    first_on_ground = 0;
+    last_on_ground = 0;
+
+    return true;
 }
 
 void Game::line_clear()
@@ -636,15 +773,9 @@ bool Game::is_piece_safe(Piece _piece)
     return true;
 }
 
-bool Game::is_on_ground()
-{
-    return current_piece->pos.row == get_shadow_point().row;
-}
+bool Game::is_on_ground() {return current_piece->pos.row == get_shadow_point().row;}
 
-int Game::get_held_piece()
-{
-    return hold_piece;
-}
+int Game::get_held_piece(){return held_piece;};
 
 int* Game::get_next_pieces_top_five()
 {
@@ -665,38 +796,90 @@ int Game::get_sum_of_gauge()
     return sum;
 }
 
-int* Game::get_board()
+int* Game::get_board_for_render()
 {
-    for(int i = VISIBLE_HEIGHT; i < BOARD_HEIGHT; i++)
+    for(int i = 0; i < VISIBLE_HEIGHT; i++)
     {
         for(int j = 0; j < BOARD_WIDTH; j++)
         {
-            board_1d[(i - VISIBLE_HEIGHT) * BOARD_WIDTH + j] = board[i][j];
+            board_for_render[i * BOARD_WIDTH + j] = board[i + VISIBLE_HEIGHT][j];
         }
     }
 
     Point shadow_pos = get_shadow_point();
     Piece shadow_piece = Piece(current_piece->piece, current_piece->rotation, shadow_pos);
-    
-    for(int i = 0; i < 4; i++)
+
+    for (int i = 0; i < 4; i++)
     {
         Point block = shadow_piece.get_blocks()[i];
-        if(block.row >= VISIBLE_HEIGHT)
+        if (block.row >= VISIBLE_HEIGHT)
         {
-            board_1d[(block.row - VISIBLE_HEIGHT) * BOARD_WIDTH + block.col] = 8;
+            board_for_render[(block.row - VISIBLE_HEIGHT) * BOARD_WIDTH + block.col] = 8;
         }
     }
 
+    for (int i = 0; i < 4; i++)
+    {
+        Point block = current_piece->get_blocks()[i];
+        if (block.row >= VISIBLE_HEIGHT)
+        {
+            board_for_render[(block.row - VISIBLE_HEIGHT) * BOARD_WIDTH + block.col] = current_piece->piece;
+        }
+    }
+
+    return board_for_render;
+}
+
+int* Game::get_obs()
+{
+    // board
+    const int CHANNEL_FACTOR = VISIBLE_HEIGHT * BOARD_WIDTH;
+    for(int i = 0; i < VISIBLE_HEIGHT; i++)
+        for(int j = 0; j < BOARD_WIDTH; j++)
+            obs[i * BOARD_WIDTH + j] = board[i + VISIBLE_HEIGHT][j];
+
+    // current piece
+    Piece curr = Piece(current_piece->piece, 0, Point(22, 4));
     for(int i = 0; i < 4; i++)
     {
         Point block = current_piece->get_blocks()[i];
-        if(block.row >= VISIBLE_HEIGHT)
+        obs[1 * CHANNEL_FACTOR + (block.row - VISIBLE_HEIGHT) * BOARD_WIDTH + block.col] = current_piece->piece;
+    }
+
+    // held piece
+    if(held_piece != -1)
+    {
+        Piece held = Piece(held_piece, 0, Point(22, 4));
+        for(int i = 0; i < 4; i++)
         {
-            board_1d[(block.row - VISIBLE_HEIGHT) * BOARD_WIDTH + block.col] = current_piece->piece;
+            Point block = held.get_blocks()[i];
+            obs[2 * CHANNEL_FACTOR + (block.row - VISIBLE_HEIGHT) * BOARD_WIDTH + block.col] = held_piece;
         }
     }
 
-    return board_1d;
+    // next 5 pieces
+    for(int i = 0; i < 5; i++)
+    {
+        Piece next = Piece(next_pieces[i], 0, Point(22, 4));
+        for(int j = 0; j < 4; j++)
+        {
+            Point block = next.get_blocks()[j];
+            obs[(3 + i) * CHANNEL_FACTOR + (block.row - VISIBLE_HEIGHT) * BOARD_WIDTH + block.col] = next_pieces[i];
+        }
+    }
+
+    // btb
+    if(back_to_back)
+        for(int i = 0; i < VISIBLE_HEIGHT; i++)
+            for(int j = 0; j < BOARD_WIDTH; j++)
+                obs[8 * CHANNEL_FACTOR + i * BOARD_WIDTH + j] = 1;
+    
+    // combo
+    int row_for_combo = combo <= VISIBLE_HEIGHT ? combo : VISIBLE_HEIGHT - 1;
+    for(int j = 0; j < BOARD_WIDTH; j++)
+        obs[9 * CHANNEL_FACTOR + (VISIBLE_HEIGHT - 1 - row_for_combo) * BOARD_WIDTH + j] = 1;
+
+    return obs;
 }
 
 Attack* Game::get_last_attack(){return &last_attack;};
@@ -718,36 +901,50 @@ int Game::get_field_height()
     return 0;
 }
 
+int Game::get_game_time(){return (int)(pygame_clock - game_start_time);};
+
 extern "C"
 {
     Game* Game_new(){return new Game();}
-    void Game_set_opponent(Game* self, Game* _opponent){self->set_opponent(_opponent);}
+    Game* Game_new_in_detail(int _das, int _arr, int _sdf, int _lock_delay, int _drop_delay, int _time){return new Game(_das, _arr, _sdf, _time, _lock_delay, _drop_delay);}
+    // void Game_set_opponent(Game* self, Game* _opponent){self->set_opponent(_opponent);}
     bool Game_is_game_over(Game* self){return self->is_game_over();}
 
-    void Game_move_left(Game* self){self->move_left();}
-    void Game_move_right(Game* self){self->move_right();}
-    void Game_soft_drop(Game* self){self->soft_drop();}
+    bool Game_move_left(Game* self){return self->move_left();}
+    bool Game_move_right(Game* self){return self->move_right();}
+    bool Game_soft_drop(Game* self){return self->soft_drop();}
+
+    void Game_off_left(Game* self){self->off_left();}
+    void Game_off_right(Game* self){self->off_right();}
+    void Game_off_soft_drop(Game* self){self->off_soft_drop();}
+
     void Game_hard_drop(Game* self){self->hard_drop();}
     void Game_rotate_counterclockwise(Game* self){self->rotate_counterclockwise();}
     void Game_rotate_clockwise(Game* self){self->rotate_clockwise();}
 
-    void Game_hold(Game* self){self->hold();}
-    void Game_lock(Game* self){self->lock();}
+    bool Game_hold(Game* self){return self->hold();}
+    bool Game_lock(Game* self){return self->lock(false);}
 
     bool Game_is_on_ground(Game* self){return self->is_on_ground();}
 
     int Game_get_held_piece(Game* self){return self->get_held_piece();}
     int* Game_get_next_pieces_top_five(Game* self){return self->get_next_pieces_top_five();}
     int Game_get_sum_of_gauge(Game* self){return self->get_sum_of_gauge();}
-    int* Game_get_board(Game* self){return self->get_board();}
+    
+    int* Game_get_board_for_render(Game* self){return self->get_board_for_render();}
+    int* Game_get_obs(Game* self){return self->get_obs();}
 
     char* Game_get_last_attack_type(Game* self){return self->get_last_attack()->type;}
     int Game_get_last_attack_lines(Game* self){return self->get_last_attack()->lines;}
     int Game_get_last_attack_combo(Game* self){return self->get_last_attack()->combo;}
     bool Game_get_last_attack_back_to_back(Game* self){return self->get_last_attack()->back_to_back;}
+
+    // for information at the observation
     int Game_get_sent_attack(Game* self){return self->get_sent_attack();}
     int Game_get_field_height(Game* self){return self->get_field_height();}
     int Game_get_piece_count(Game* self){return self->get_piece_count();}
+    int Game_get_time(Game* self){return self->get_game_time();}
+    void Game_set_time(Game* self, int _time){self->set_game_time(_time);}
 
     void Game_delete(Game* self){delete self;}
 }

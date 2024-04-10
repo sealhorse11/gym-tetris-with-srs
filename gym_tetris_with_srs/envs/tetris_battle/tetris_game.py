@@ -2,278 +2,54 @@ import pygame
 import ctypes
 import sys
 import numpy as np
+from tetris_constants_for_render import *
+from tetris_logic_wrapping import GameLogic
 
-try:
-    lib = ctypes.CDLL('./libtetris.so', winmode=ctypes.RTLD_GLOBAL)
-except OSError:
-    lib = ctypes.CDLL('./gym_tetris_with_srs/envs/tetris_battle/libtetris.so', winmode=ctypes.RTLD_GLOBAL)
-
-# Colors
-BACKGROUND = (0, 0, 0)
-T_COLOR = (128, 0, 128)
-S_COLOR = (0, 255, 0)
-Z_COLOR = (255, 0, 0)
-O_COLOR = (255, 255, 0)
-I_COLOR = (0, 255, 255)
-J_COLOR = (0, 0, 255)
-L_COLOR = (255, 127, 0)
-GHOST_COLOR = (50, 50, 50)
-GARBAGE_COLOR = (127, 127, 127)
-GRID_COLOR = (30, 30, 30)
-
-COLORS = [T_COLOR, S_COLOR, Z_COLOR, O_COLOR, I_COLOR, J_COLOR, L_COLOR, GARBAGE_COLOR, GHOST_COLOR]
-
-# Pieces' shapes
-T_SHAPE = [
-    [0, 1, 0],
-    [1, 1, 1]
-]
-S_SHAPE = [
-    [0, 1, 1],
-    [1, 1, 0]
-]
-Z_SHAPE = [
-    [1, 1, 0],
-    [0, 1, 1]
-]
-O_SHAPE = [
-    [1, 1],
-    [1, 1]
-]
-I_SHAPE = [
-    [1, 1, 1, 1]
-]
-J_SHAPE = [
-    [1, 0, 0],
-    [1, 1, 1]
-]
-L_SHAPE = [
-    [0, 0, 1],
-    [1, 1, 1]
-]
-SHAPES = [T_SHAPE, S_SHAPE, Z_SHAPE, O_SHAPE, I_SHAPE, J_SHAPE, L_SHAPE]
-
-# Game class
-class GameLogic(object):
-    def __init__(self, arr=50, das=100, sdf=50):
-        lib.Game_new.argtypes = []
-        lib.Game_new.restype = ctypes.c_void_p
-        lib.Game_set_opponent.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
-        lib.Game_set_opponent.restype = None
-        lib.Game_is_game_over.argtypes = [ctypes.c_void_p]
-        lib.Game_is_game_over.restype = ctypes.c_bool
-
-        lib.Game_move_left.argtypes = [ctypes.c_void_p]
-        lib.Game_move_left.restype = None
-        lib.Game_move_right.argtypes = [ctypes.c_void_p]
-        lib.Game_move_right.restype = None
-        lib.Game_soft_drop.argtypes = [ctypes.c_void_p]
-        lib.Game_soft_drop.restype = None
-        lib.Game_hard_drop.argtypes = [ctypes.c_void_p]
-        lib.Game_hard_drop.restype = None
-
-        lib.Game_rotate_counterclockwise.argtypes = [ctypes.c_void_p]
-        lib.Game_rotate_counterclockwise.restype = None
-        lib.Game_rotate_clockwise.argtypes = [ctypes.c_void_p]
-        lib.Game_rotate_clockwise.restype = None
-
-        lib.Game_hold.argtypes = [ctypes.c_void_p]
-        lib.Game_hold.restype = None
-        lib.Game_lock.argtypes = [ctypes.c_void_p]
-        lib.Game_lock.restype = None
-
-        lib.Game_is_on_ground.argtypes = [ctypes.c_void_p]
-        lib.Game_is_on_ground.restype = ctypes.c_bool
-
-        lib.Game_get_held_piece.argtypes = [ctypes.c_void_p]
-        lib.Game_get_held_piece.restype = ctypes.c_int
-        lib.Game_get_next_pieces_top_five.argtypes = [ctypes.c_void_p]
-        lib.Game_get_next_pieces_top_five.restype = ctypes.POINTER(ctypes.c_int * 5)
-        lib.Game_get_sum_of_gauge.argtypes = [ctypes.c_void_p]
-        lib.Game_get_sum_of_gauge.restype = ctypes.c_int
-        lib.Game_get_board.argtypes = [ctypes.c_void_p]
-        lib.Game_get_board.restype = ctypes.POINTER(ctypes.c_int * 200)
-
-        lib.Game_get_last_attack_type.argtypes = [ctypes.c_void_p]
-        lib.Game_get_last_attack_type.restype = ctypes.c_char_p
-        lib.Game_get_last_attack_lines.argtypes = [ctypes.c_void_p]
-        lib.Game_get_last_attack_lines.restype = ctypes.c_int
-        lib.Game_get_last_attack_combo.argtypes = [ctypes.c_void_p]
-        lib.Game_get_last_attack_combo.restype = ctypes.c_int
-        lib.Game_get_last_attack_back_to_back.argtypes = [ctypes.c_void_p]
-        lib.Game_get_last_attack_back_to_back.restype = ctypes.c_bool
-
-        lib.Game_get_sent_attack.argtypes = [ctypes.c_void_p]
-        lib.Game_get_sent_attack.restype = ctypes.c_int
-
-        lib.Game_get_field_height.argtypes = [ctypes.c_void_p]
-        lib.Game_get_field_height.restype = ctypes.c_int
-
-        lib.Game_get_piece_count.argtypes = [ctypes.c_void_p]
-        lib.Game_get_piece_count.restype = ctypes.c_int
-
-        lib.Game_delete.argtypes = [ctypes.c_void_p]
-        lib.Game_delete.restype = None
-
-        self.obj = lib.Game_new()
-        self.arr = arr
-        self.das = das
-        self.sdf = sdf
-    
-    def set_opponent(self, opponent):
-        lib.Game_set_opponent(self.obj, opponent.obj)
-
-    def is_game_over(self):
-        return lib.Game_is_game_over(self.obj)
-    
-    def move_left(self):
-        lib.Game_move_left(self.obj)
-    
-    def move_right(self):
-        lib.Game_move_right(self.obj)
-    
-    def soft_drop(self):
-        lib.Game_soft_drop(self.obj)
-    
-    def hard_drop(self):
-        lib.Game_hard_drop(self.obj)
-    
-    def rotate_counterclockwise(self):
-        lib.Game_rotate_counterclockwise(self.obj)
-    
-    def rotate_clockwise(self):
-        lib.Game_rotate_clockwise(self.obj)
-    
-    def hold(self):
-        lib.Game_hold(self.obj)
-    
-    def lock(self):
-        lib.Game_lock(self.obj)
-    
-    def is_on_ground(self):
-        return lib.Game_is_on_ground(self.obj)
-
-    def get_held_piece(self):
-        return lib.Game_get_held_piece(self.obj)
-    
-    def get_next_pieces_top_five(self) -> list:
-        darrayptr = lib.Game_get_next_pieces_top_five(self.obj)
-        darray = darrayptr.contents
-        return list(darray)
-
-    def get_sum_of_gauge(self):
-        return lib.Game_get_sum_of_gauge(self.obj)
-    
-    def get_board(self) -> list:
-        darrayptr = lib.Game_get_board(self.obj)
-        darray = darrayptr.contents
-        return list(darray)
-    
-    def get_last_attack_type(self):
-        last_attack_type = str(lib.Game_get_last_attack_type(self.obj), 'utf-8')
-        return last_attack_type.replace(" ", "\n")
-    
-    def get_last_attack_lines(self):
-        return lib.Game_get_last_attack_lines(self.obj)
-    
-    def get_last_attack_combo(self):
-        return lib.Game_get_last_attack_combo(self.obj)
-    
-    def get_last_attack_back_to_back(self):
-        return lib.Game_get_last_attack_back_to_back(self.obj)
-    
-    def get_sent_attack(self):
-        return lib.Game_get_sent_attack(self.obj)
-
-    def get_field_height(self):
-        return lib.Game_get_field_height(self.obj)
-
-    def get_piece_count(self):
-        return lib.Game_get_piece_count(self.obj)
-    
-    def __del__(self):
-        try:
-            lib.Game_delete(self.obj)
-        except AttributeError:
-            print("GameLogic object already deleted")
-
-
-class Game():
-    def __init__(self, n_agent=2, window_size=(1600, 600), block_size=30, drop_delay=1000, das=200, arr=50, fps=60):
+class TetrisGame():
+    def __init__(self, n_agent=1, window_size=(800, 600), block_size=30, arr=50, das=100, sdf=50, lock_delay=500, drop_delay=1000, fps=60):
         self.n_agent = n_agent
         self.window_size = window_size
         self.block_size = block_size
         self.play_width = block_size * 10
         self.play_height = block_size * 20
         self.drop_delay = drop_delay
+        self.lock_delay = lock_delay
         self.das = das
         self.arr = arr
+        self.sdf = sdf
         self.fps = fps
 
         self.top_left_x = [(window_size[0] // n_agent * i) + (window_size[0] // n_agent - self.play_width) // 2 for i in range(n_agent)]
         self.top_left_y = (window_size[1] - self.play_height) // 2
 
         pygame.init()
-        self.clock = pygame.time.Clock()
         self.font = pygame.font.SysFont("Consolas", 50)
         self.mini_font = pygame.font.SysFont("Consolas", 20)
-
-        self.DROP_BLOCK_EVENT = [pygame.USEREVENT + i for i in range(1, n_agent + 1)]
-
-        for i in range(n_agent):
-            pygame.time.set_timer(self.DROP_BLOCK_EVENT[i], drop_delay)
+        self.clock = pygame.time.Clock()
         
         self.start()
-
+    
     def start(self):
         self.window = pygame.display.set_mode(self.window_size, pygame.HWSURFACE | pygame.DOUBLEBUF)
         pygame.display.set_caption("Tetris")
 
-        self.player = [GameLogic() for _ in range(self.n_agent)]
+        print(pygame.time.get_ticks())
+        self.player = [GameLogic(self.das, self.arr, self.sdf, pygame.time.get_ticks(), self.lock_delay, self.drop_delay) for _ in range(self.n_agent)]
 
         if self.n_agent == 2:
             self.player[0].set_opponent(self.player[1])
             self.player[1].set_opponent(self.player[0])
         
         self.game_over = False
-
-        self.on_grounded = [False for _ in range(self.n_agent)]
-        self.on_grounded_time = [0 for _ in range(self.n_agent)]
-        self.struggled_time = [0 for _ in range(self.n_agent)]
-        self.struggled = [False for _ in range(self.n_agent)]
-
-        self.left_pressed_time = [-1 for _ in range(self.n_agent)]
-        self.right_pressed_time = [-1 for _ in range(self.n_agent)]
-        self.down_pressed = [False for _ in range(self.n_agent)]
-        self.last_moved_time = [-1 for _ in range(self.n_agent)]
-
-        self.start_time = pygame.time.get_ticks()
-
-    def control_lock(self, is_on_ground, on_grounded, struggled, on_grounded_time, struggled_time) -> tuple[bool, bool, int, int, bool]:
-        if is_on_ground and not on_grounded:
-            struggled_time = pygame.time.get_ticks()
-            on_grounded_time = pygame.time.get_ticks()
-            on_grounded = True
-
-        if on_grounded:
-            if struggled or not is_on_ground:
-                on_grounded_time = pygame.time.get_ticks()
-                struggled = False
-            
-            if is_on_ground:
-                if (not struggled and pygame.time.get_ticks() - on_grounded_time >= 1000) or (pygame.time.get_ticks() - struggled_time >= 6000):
-                    on_grounded = False
-                    return (on_grounded, struggled, on_grounded_time, struggled_time, True)
-        
-        return (on_grounded, struggled, on_grounded_time, struggled_time, False)
-
+    
     def draw_board_single(self):
         self.draw_board(self.window, self.player[0], self.top_left_x[0], self.top_left_y, self.block_size)
     
-    def draw_board(self, window, player, top_left_x, top_left_y, block_size):    
+    def draw_board(self, window, player: GameLogic, top_left_x, top_left_y, block_size):    
         if window is None:
             window = self.window
-        
+
+
         # Draw grid
         line_width = 2
         for i in range(0, 11):
@@ -283,10 +59,12 @@ class Game():
             pygame.draw.line(window, GRID_COLOR, (top_left_x, top_left_y + i * block_size), (top_left_x + 10 * block_size, top_left_y + i * block_size), line_width)
         
         # Draw blocks
-        board = player.get_board()
-        for i in range(200):
-            if board[i] != -1:
-                pygame.draw.rect(window, COLORS[board[i]], (top_left_x + (i % 10) * block_size, top_left_y + (i // 10) * block_size, block_size, block_size))
+        board = player.get_board_for_render()
+        print(board)
+        for i in range(20):
+            for j in range(10):
+                if board[i, j] != -1:
+                    pygame.draw.rect(window, COLORS[board[i, j]], (top_left_x + j * block_size, top_left_y + i * block_size, block_size, block_size))
 
         # Draw next pieces
         next_pieces = player.get_next_pieces_top_five()
@@ -339,13 +117,17 @@ class Game():
         
         # Draw APM
         try:
-            apm = (player.get_sent_attack() / (pygame.time.get_ticks() - self.start_time)) * 60000
+            apm = (player.get_sent_attack() / player.get_time()) * 60000
         except ZeroDivisionError:
             apm = 0
         self.window.blit(self.mini_font.render("APM: " + str(round(apm, 3)), True, (255, 255, 255)), (top_left_x + 11 * block_size, top_left_y + 20 * block_size - 2 * block_size))
 
     def play(self, user=0):
-        assert self.n_agent <= 2
+        # not implemented when number of agent != 1
+        assert self.n_agent == 1
+
+        # check if key is pressed
+        key_pressed = [False for _ in range(3)]
         
         while not self.game_over:
             # Check game over
@@ -355,24 +137,20 @@ class Game():
                     break
             
             # Deal with events
-            self.strgguled = [False, False]
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.game_over = True
 
                 if event.type == pygame.KEYDOWN:
-                    if self.on_grounded[user]:
-                        self.struggled[user] = True
-                    
                     if event.key == pygame.K_LEFT:
-                        self.left_pressed_time[user] = pygame.time.get_ticks()
                         self.player[user].move_left()
+                        key_pressed[0] = True
                     if event.key == pygame.K_RIGHT:
-                        self.right_pressed_time[user] = pygame.time.get_ticks()
                         self.player[user].move_right()
+                        key_pressed[1] = True
                     if event.key == pygame.K_DOWN:
-                        self.down_pressed[user] = True
                         self.player[user].soft_drop()
+                        key_pressed[2] = True
                     if event.key == pygame.K_SPACE:
                         self.player[user].hard_drop()
                     if event.key == pygame.K_UP or event.key == pygame.K_x:
@@ -381,58 +159,28 @@ class Game():
                         self.player[user].rotate_counterclockwise()
                     if event.key == pygame.K_LSHIFT or event.key == pygame.K_RSHIFT or event.key == pygame.K_c:
                         self.player[user].hold()
-                        self.on_grounded[user] = False
-                        self.struggled[user] = False
                 
                 if event.type == pygame.KEYUP:
                     if event.key == pygame.K_LEFT:
-                        self.left_pressed_time[user] = -1
-                        self.last_moved_time[user] = -1
+                        key_pressed[0] = False
+                        self.player[user].off_left()
                     if event.key == pygame.K_RIGHT:
-                        self.right_pressed_time[user] = -1
-                        self.last_moved_time[user] = -1
+                        key_pressed[1] = False
+                        self.player[user].off_right()
                     if event.key == pygame.K_DOWN:
-                        self.down_pressed[user] = False
-                        self.last_moved_time[user] = -1
-                
-                for i in range(self.n_agent):
-                    if event.type == self.DROP_BLOCK_EVENT[i]:
-                        self.player[i].soft_drop()
-
-            # Deal with auto shift
-            if self.left_pressed_time[user] != -1 or self.right_pressed_time[user] != -1:
-                if self.left_pressed_time[user] != -1 and (pygame.time.get_ticks() - self.left_pressed_time[user] < pygame.time.get_ticks() - self.right_pressed_time[user]) \
-                    and pygame.time.get_ticks() - self.left_pressed_time[user] >= self.das:
-                    if self.last_moved_time[user] == -1:
-                        self.last_moved_time[user] = pygame.time.get_ticks()
-                    
-                    if self.last_moved_time[user] != -1 and pygame.time.get_ticks() - self.last_moved_time[user] >= self.arr:
-                        self.player[user].move_left()
-                        self.last_moved_time[user] = pygame.time.get_ticks()
-                elif self.right_pressed_time[user] != -1 and (pygame.time.get_ticks() - self.right_pressed_time[user] < pygame.time.get_ticks() - self.left_pressed_time[user]) \
-                    and pygame.time.get_ticks() - self.right_pressed_time[user] >= self.das:
-                    if self.last_moved_time[user] == -1:
-                        self.last_moved_time[user] = pygame.time.get_ticks()
-                    
-                    if self.last_moved_time[user] != -1 and pygame.time.get_ticks() - self.last_moved_time[user] >= self.arr:
-                        self.player[user].move_right()
-                        self.last_moved_time[user] = pygame.time.get_ticks()
+                        key_pressed[2] = False
+                        self.player[user].off_soft_drop()
             
-            if self.down_pressed[user]:
-                if self.last_moved_time[user] == -1:
-                    self.last_moved_time[user] = pygame.time.get_ticks()
-                
-                if self.last_moved_time[user] != -1 and pygame.time.get_ticks() - self.last_moved_time[user] >= self.arr:
-                    self.player[user].soft_drop()
-                    self.last_moved_time[user] = pygame.time.get_ticks()
+            # Deal with moving
+            if key_pressed[0]:
+                self.player[user].move_left()
+            if key_pressed[1]:
+                self.player[user].move_right()
+            if key_pressed[2]:
+                self.player[user].soft_drop()
             
-            # Deal with lock
-            for i in range(self.n_agent):
-                self.on_grounded[i], self.struggled[i], self.on_grounded_time[i], self.struggled_time[i], is_to_lock = \
-                    self.control_lock(self.player[i].is_on_ground(), self.on_grounded[i], self.struggled[i], self.on_grounded_time[i], self.struggled_time[i])
-                
-                if is_to_lock:
-                    self.player[i].lock()
+            # Lock
+            self.player[user].lock()
 
             # Draw window
             self.window.fill(BACKGROUND)
@@ -440,129 +188,23 @@ class Game():
                 self.draw_board(self.window, self.player[i], self.top_left_x[i], self.top_left_y, self.block_size)
             pygame.display.flip()
 
-            # Limit frame rate
-            self.clock.tick(self.fps)
-
-    def get_game_over(self, target_player=0):
-        return self.player[target_player].is_game_over()
-
-    def get_obs(self, target_player=0):
-        # get board for obs
-        board_1d = self.player[target_player].get_board()
-        new_board = np.zeros((1, 20, 20), dtype=np.uint8)
-        for i in range(200):
-            new_board[0][i // 10][i % 10] = 1 if board_1d[i] >= 0 else 0
-        
-        # add held piece and next pieces
-        starting_row_for_drawing_piece = 1
-        starting_col_for_drawing_piece = 10
-
-        held_piece = self.player[target_player].get_held_piece()
-        next_pieces = self.player[target_player].get_next_pieces_top_five()
-
-        if held_piece != -1:
-            for i, line in enumerate(SHAPES[held_piece]):
-                for j, block in enumerate(line):
-                    new_board[0][starting_row_for_drawing_piece + i][starting_col_for_drawing_piece + j] = block
-        
-        for i, target_piece in enumerate(next_pieces):
-            for j, line in enumerate(SHAPES[target_piece]):
-                for k, block in enumerate(line):
-                    new_board[0][starting_row_for_drawing_piece + 3 * i + j][starting_col_for_drawing_piece + k] = block
-        
-        # add combo, back to back, gauge
-        combo = self.player[target_player].get_last_attack_combo()
-        back_to_back = self.player[target_player].get_last_attack_back_to_back()
-        gauge = self.player[target_player].get_sum_of_gauge()
-
-        col_for_drawing_combo = starting_col_for_drawing_piece + 6
-        for row in range(0, 20):
-            if 20 - row < combo:
-                new_board[0][20 - row][col_for_drawing_combo] = 1
-            if back_to_back:
-                new_board[0][row][col_for_drawing_combo + 1] = 1
-            if 20 - row < gauge:
-                new_board[0][20 - row][col_for_drawing_combo + 2] = 1
-
-        if self.n_agent > 1:
-            opponent_board_1d = self.player[1 - target_player].get_board()
-            opponent_board = np.zeros((1, 20, 10), dtype=np.int8)
-            for i in range(200):
-                opponent_board[0][i // 10][i % 10] = 1 if opponent_board_1d[i] >= 0 else 0
-            
-            # concatenate two boards
-            new_board = np.concatenate((new_board, opponent_board), axis=2)
-
-        return new_board
-    
-    
-    def step(self, action, player=0):
-        for event in pygame.event.get():
-            if event.type == self.DROP_BLOCK_EVENT[player]:
-                self.player[player].soft_drop()
-        
-        self.on_grounded[player], self.struggled[player], self.on_grounded_time[player], self.struggled_time[player], is_to_lock = \
-            self.control_lock(
-                self.player[player].is_on_ground(), 
-                self.on_grounded[player], 
-                self.struggled[player], 
-                self.on_grounded_time[player], 
-                self.struggled_time[player]
-                )
-        
-        if is_to_lock:
-            self.player[player].lock()
-
-        if action == 0:
-            self.player[player].move_left()
-        elif action == 1:
-            self.player[player].move_right()
-        elif action == 2:
-            self.player[player].soft_drop()
-        elif action == 3:
-            self.player[player].hard_drop()
-        elif action == 4:
-            self.player[player].rotate_clockwise()
-        elif action == 5:
-            self.player[player].rotate_counterclockwise()
-        elif action == 6:
-            self.player[player].hold()
-            self.on_grounded[player] = False
-            self.struggled[player] = False
-    
-    def get_info(self, target_player=0):
-        return {
-            "sent_attack": self.player[target_player].get_sent_attack(),
-            "time": pygame.time.get_ticks() - self.start_time,
-            "height": self.player[target_player].get_field_height(),
-            "piece_count": self.player[target_player].get_piece_count(),
-            "next_piece": self.player[target_player].get_next_pieces_top_five()[0],
-        }
-
-    def __del__(self):
-        print("attempt to delete game object")
-        if self.window == None:
-            print("already deleted")
-        else:
-            try:
-                del self.player[0]
-                if self.n_agent == 2:
-                    del self.player[1]
-            except AttributeError:
-                print("player: GameLogic already deleted")
-
-            # del self.player[1]       
-            try:
-                pygame.quit()
-            except AttributeError:
-                print("pygame already quit")
+            # Update time
+            self.clock.tick(60)
+            curr_ticks = pygame.time.get_ticks()
+            for i in range(self.n_agent):
+                self.player[i].set_time(curr_ticks)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 1 or sys.argv[1] == "solo":
-        game = Game(n_agent=1, window_size=(800, 600), block_size=30, drop_delay=1000, das=200, arr=50, fps=60)
+    if sys.argv[1] == "new":
+        game = TetrisGame(n_agent=1, window_size=(800, 600), block_size=30, drop_delay=1000, das=200, arr=50, sdf=200, fps=30)
         game.play()
     elif sys.argv[1] == "multi":
-        game = Game(n_agent=2, window_size=(1600, 600), block_size=30, drop_delay=1000, das=200, arr=50, fps=60)
-        game.play()
+        # game = Game(n_agent=2, window_size=(1600, 600), block_size=30, drop_delay=1000, das=200, arr=50, fps=60)
+        # game.play()
+        pass
+    else:
+        # game = Game(n_agent=1, window_size=(800, 600), block_size=30, drop_delay=1000, das=200, arr=50, fps=60)
+        # game.play()
+        pass
     

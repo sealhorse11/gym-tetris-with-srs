@@ -1,14 +1,15 @@
 #include <vector>
+#include <ctime>
 
 const int BOARD_WIDTH = 10;
-const int BOARD_HEIGHT = 40;
+const int BOARD_HEIGHT = 40;    // 20 visible, 20 hidden
 const int VISIBLE_HEIGHT = 20;
 
 const int COMBO_DAMAGE[] = {
     0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5
-};
+};  // Criteria: Tetris Friends Expert Plus mode
 
-const int NUMBER_OF_NEXT_PIECES = 5;
+const int NUMBER_OF_NEXT_PIECES = 5;    // Number of next pieces to be shown
 
 char ATTACK_TYPES[][22] = {
     "SINGLE", "DOUBLE", "TRIPLE", "TETRIS", "T-SPIN mini SINGLE", "T-SPIN mini DOUBLE", "T-SPIN SINGLE", "T-SPIN DOUBLE", "T-SPIN TRIPLE", "PERFECT CLEAR", "PERFECT CLEAR TETRIS", ""
@@ -35,6 +36,8 @@ struct Point{
     }
 };
 
+
+// 7 Tetrominos with 4 blocks and 4 rotations each 
 const Point TETROMINOS[7][4][4] = {
     {   // T
         {Point(0, -1), Point(0, 0), Point(-1, 0), Point(0, 1)},
@@ -80,6 +83,8 @@ const Point TETROMINOS[7][4][4] = {
     }
 };
 
+
+// Wall kicks for SRS (Super Rotation System)
 const Point WALL_KICK_I_CLOCKWISE[4][5] = {
     {Point(1, 0), Point(-1, 0), Point(2, 0), Point(-1, -1), Point(2, 2)},
     {Point(0, -1), Point(-1, -1), Point(2, -1), Point(-1, 1), Point(2, -2)},
@@ -132,45 +137,61 @@ struct Attack{
 class Game{
     public:
         Game();
-        void set_opponent(Game *_opponent) {opponent = _opponent;};
-        // Game* get_self() {return this;};
+        Game(int das, int arr, int sdf, int _time, int lock_delay, int drop_delay);
+
+        // void set_opponent(Game *_opponent) {opponent = _opponent;};
         bool is_game_over() {return game_over;};
         
-        void move_left();
-        void move_right();
-        void soft_drop();
+        bool move_left();
+        bool move_right();
+        bool soft_drop(bool by_gravity);
+        void off_left();
+        void off_right();
+        void off_soft_drop();
         void hard_drop();
         void rotate_counterclockwise();
         void rotate_clockwise();
-
-        void hold();
-        void lock();
+        bool hold();
+        bool lock(bool force_lock);
 
         bool is_on_ground();
 
         int get_held_piece();
         int* get_next_pieces_top_five();
         int get_sum_of_gauge();
-        int* get_board();
+
+        int* get_board_for_render();
+        int* get_obs();
 
         Attack* get_last_attack();
         int get_sent_attack();
         int get_field_height();
         int get_piece_count();
+        int get_game_time();
+        void set_game_time(int _time){pygame_clock = _time;};
 
     private:
         Game *opponent;
-        int next_pieces_top_five[5];
-        int board_1d[VISIBLE_HEIGHT * BOARD_WIDTH];
-
         int board[BOARD_HEIGHT][BOARD_WIDTH];
-        int score;
-        int combo;
-        int level;
-        bool game_over;
-        
-        Piece *current_piece;
+        int* board_for_render;
+        int* obs;
 
+        int das;
+        int arr;
+        int sdf;
+        int lock_delay;
+        int drop_delay;
+
+        clock_t pygame_clock;
+        clock_t game_start_time;
+        clock_t first_on_ground, last_on_ground;
+        clock_t left_pressed_time, right_pressed_time;
+        clock_t last_shifted;
+        clock_t last_soft_dropped;
+        clock_t last_dropped;
+
+        int combo;
+        bool game_over;
         bool back_to_back;
         bool t_spin;
         bool mini_t_spin;
@@ -178,9 +199,11 @@ class Game{
         int sent_attack;
         int piece_count;
 
+        Piece *current_piece;
         bool recently_held;
-        int hold_piece;
+        int held_piece;
         std::vector<int> next_pieces;
+        int next_pieces_top_five[5];
         std::vector<int> gauges;
 
         void init_board();
@@ -195,5 +218,4 @@ class Game{
         void create_garbage();
 
         bool is_piece_safe(Piece _piece);
-
 };
